@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ActionStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model User {
+  id            String         @id @default(cuid())
+  name          String
+  email         String         @unique
+  password      String
+  avatarUrl     String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  memberships   TeamMember[]
+  announcements Announcement[]
+  assignedItems ActionItem[]   @relation("AssignedItems")
+  createdItems  ActionItem[]   @relation("CreatedItems")
+  refreshTokens RefreshToken[]
+}
+
+model Team {
+  id            String         @id @default(cuid())
+  name          String
+  description   String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  members       TeamMember[]
+  goals         Goal[]
+  announcements Announcement[]
+  actionItems   ActionItem[]
+}
+
+model TeamMember {
+  id       String   @id @default(cuid())
+  role     Role     @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  userId   String
+  teamId   String
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+}
+
+model Goal {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+}
+
+model Announcement {
+  id            String   @id @default(cuid())
+  title         String
+  content       String
+  attachmentUrl String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  teamId        String
+  authorId      String
+
+  team          Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  author        User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+model ActionItem {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  status      ActionStatus @default(TODO)
+  dueDate     DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  teamId      String
+  assigneeId  String?
+  creatorId   String
+
+  team        Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  assignee    User?        @relation("AssignedItems", fields: [assigneeId], references: [id])
+  creator     User         @relation("CreatedItems", fields: [creatorId], references: [id])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

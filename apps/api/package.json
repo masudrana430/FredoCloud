@@ -9,10 +9,12 @@
     "build": "echo No build step needed"
   },
   "dependencies": {
+    "@prisma/client": "^7.8.0",
     "cookie-parser": "latest",
     "cors": "latest",
     "dotenv": "latest",
-    "express": "latest"
+    "express": "latest",
+    "prisma": "^7.8.0"
   },
   "devDependencies": {
     "nodemon": "latest"
