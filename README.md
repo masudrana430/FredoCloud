@@ -105,13 +105,11 @@ From the root:
 
 pnpm dev
 
-Frontend:
+## Live Demo
 
-http://localhost:3000
+Frontend: https://web-production-ef8eb.up.railway.app  
+Backend Health Check: https://api-production-e292.up.railway.app/health
 
-Backend health check:
-
-http://localhost:5000/health
 API Routes
 Auth
 POST /api/auth/register
