@@ -1,5 +1,6 @@
 import prisma from "../config/db.js";
 import { getIO } from "../sockets/index.js";
+import { uploadBufferToCloudinary } from "../utils/uploadToCloudinary.js";
 
 async function getMembership(userId, teamId) {
     return prisma.teamMember.findUnique({
@@ -38,12 +39,23 @@ export async function createAnnouncement(req, res, next) {
             });
         }
 
+        let uploadedAttachmentUrl = attachmentUrl || null;
+
+        if (req.file) {
+            const result = await uploadBufferToCloudinary(
+                req.file.buffer,
+                "collaborative-team-hub/announcements"
+            );
+
+            uploadedAttachmentUrl = result.secure_url;
+        }
+
         const announcement = await prisma.announcement.create({
             data: {
                 teamId,
                 title,
                 content,
-                attachmentUrl,
+                attachmentUrl: uploadedAttachmentUrl,
                 authorId: req.user.id
             },
             include: {
@@ -144,6 +156,17 @@ export async function updateAnnouncement(req, res, next) {
             });
         }
 
+        let uploadedAttachmentUrl = attachmentUrl;
+
+        if (req.file) {
+            const result = await uploadBufferToCloudinary(
+                req.file.buffer,
+                "collaborative-team-hub/announcements"
+            );
+
+            uploadedAttachmentUrl = result.secure_url;
+        }
+
         const announcement = await prisma.announcement.update({
             where: {
                 id: announcementId
@@ -151,7 +174,9 @@ export async function updateAnnouncement(req, res, next) {
             data: {
                 ...(title !== undefined && { title }),
                 ...(content !== undefined && { content }),
-                ...(attachmentUrl !== undefined && { attachmentUrl })
+                ...(uploadedAttachmentUrl !== undefined && {
+                    attachmentUrl: uploadedAttachmentUrl
+                })
             },
             include: {
                 author: {

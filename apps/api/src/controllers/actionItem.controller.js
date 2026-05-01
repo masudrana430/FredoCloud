@@ -1,5 +1,6 @@
 import prisma from "../config/db.js";
 import { getIO } from "../sockets/index.js";
+import { uploadBufferToCloudinary } from "../utils/uploadToCloudinary.js";
 
 async function getMembership(userId, teamId) {
     return prisma.teamMember.findUnique({
@@ -18,7 +19,14 @@ function isValidStatus(status) {
 
 export async function createActionItem(req, res, next) {
     try {
-        const { teamId, title, description, assigneeId, dueDate } = req.body;
+        const {
+            teamId,
+            title,
+            description,
+            assigneeId,
+            dueDate,
+            attachmentUrl
+        } = req.body;
 
         if (!teamId || !title) {
             return res.status(400).json({
@@ -43,6 +51,17 @@ export async function createActionItem(req, res, next) {
                 });
             }
         }
+        let uploadedAttachmentUrl = attachmentUrl || null;
+
+        if (req.file) {
+            const result = await uploadBufferToCloudinary(
+                req.file.buffer,
+                "collaborative-team-hub/action-items"
+            );
+
+            uploadedAttachmentUrl = result.secure_url;
+        }
+
 
         const actionItem = await prisma.actionItem.create({
             data: {
@@ -51,7 +70,8 @@ export async function createActionItem(req, res, next) {
                 description,
                 assigneeId: assigneeId || null,
                 creatorId: req.user.id,
-                dueDate: dueDate ? new Date(dueDate) : null
+                dueDate: dueDate ? new Date(dueDate) : null,
+                attachmentUrl: uploadedAttachmentUrl,
             },
             include: {
                 assignee: {
@@ -140,7 +160,14 @@ export async function getTeamActionItems(req, res, next) {
 export async function updateActionItem(req, res, next) {
     try {
         const { itemId } = req.params;
-        const { title, description, status, assigneeId, dueDate } = req.body;
+        const {
+            title,
+            description,
+            status,
+            assigneeId,
+            dueDate,
+            attachmentUrl
+        } = req.body;
 
         const existingActionItem = await prisma.actionItem.findUnique({
             where: {
@@ -184,6 +211,17 @@ export async function updateActionItem(req, res, next) {
             }
         }
 
+        let uploadedAttachmentUrl = attachmentUrl;
+
+        if (req.file) {
+            const result = await uploadBufferToCloudinary(
+                req.file.buffer,
+                "collaborative-team-hub/action-items"
+            );
+
+            uploadedAttachmentUrl = result.secure_url;
+        }
+
         const actionItem = await prisma.actionItem.update({
             where: {
                 id: itemId
@@ -195,6 +233,9 @@ export async function updateActionItem(req, res, next) {
                 ...(assigneeId !== undefined && { assigneeId: assigneeId || null }),
                 ...(dueDate !== undefined && {
                     dueDate: dueDate ? new Date(dueDate) : null
+                }),
+                ...(uploadedAttachmentUrl !== undefined && {
+                    attachmentUrl: uploadedAttachmentUrl
                 })
             },
             include: {

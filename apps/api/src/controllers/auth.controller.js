@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../config/db.js";
+import { uploadBufferToCloudinary } from "../utils/uploadToCloudinary.js";
 import {
   generateAccessToken,
   generateRefreshToken
@@ -245,4 +246,43 @@ export async function getMe(req, res) {
   res.json({
     user: req.user
   });
+}
+
+export async function uploadAvatar(req, res, next) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        message: "Avatar file is required"
+      });
+    }
+
+    const result = await uploadBufferToCloudinary(
+      req.file.buffer,
+      "collaborative-team-hub/avatars",
+      "image"
+    );
+
+    const user = await prisma.user.update({
+      where: {
+        id: req.user.id
+      },
+      data: {
+        avatarUrl: result.secure_url
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatarUrl: true,
+        createdAt: true
+      }
+    });
+
+    res.json({
+      message: "Avatar uploaded successfully",
+      user
+    });
+  } catch (error) {
+    next(error);
+  }
 }
