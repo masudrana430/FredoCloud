@@ -7,14 +7,13 @@ node_modules
 dist
 **/dist
 
+.env
+.env.*
+**/.env
+**/.env.*
+
 cookies.txt
 login.json
 teams.json
-
-.env
-.env.*
-!.env.example
-**/.env
-**/.env.*
 
 .DS_Store
