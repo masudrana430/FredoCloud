@@ -5,7 +5,7 @@ import { getSocket } from "@/lib/socket";
 
 export function useTeamSocket(teamId, onTeamUpdate) {
   useEffect(() => {
-    if (!teamId) return;
+    if (!teamId || !onTeamUpdate) return;
 
     const socket = getSocket();
 
