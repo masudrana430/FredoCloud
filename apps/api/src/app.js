@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.routes.js";
 import teamRoutes from "./routes/team.routes.js";
 import goalRoutes from "./routes/goal.routes.js";
 import announcementRoutes from "./routes/announcement.routes.js";
+import actionItemRoutes from "./routes/actionItem.routes.js";
 import { errorMiddleware } from "./middlewares/error.middleware.js";
 
 const app = express();
@@ -31,6 +32,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/teams", teamRoutes);
 app.use("/api/goals", goalRoutes);
 app.use("/api/announcements", announcementRoutes);
+app.use("/api/action-items", actionItemRoutes);
 
 app.use(errorMiddleware);
 
