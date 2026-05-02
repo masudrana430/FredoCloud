@@ -4,7 +4,9 @@ import {
   createTeam,
   getMyTeams,
   getTeamById,
-  addTeamMember,
+  updateTeam,
+  inviteTeamMember,
+  updateMemberRole,
   removeTeamMember
 } from "../controllers/team.controller.js";
 
@@ -15,7 +17,9 @@ router.use(requireAuth);
 router.post("/", createTeam);
 router.get("/", getMyTeams);
 router.get("/:teamId", getTeamById);
-router.post("/:teamId/members", addTeamMember);
+router.patch("/:teamId", updateTeam);
+router.post("/:teamId/invite", inviteTeamMember);
+router.patch("/:teamId/members/:userId/role", updateMemberRole);
 router.delete("/:teamId/members/:userId", removeTeamMember);
 
 export default router;

@@ -18,6 +18,36 @@ enum ActionStatus {
   DONE
 }
 
+enum GoalStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum NotificationType {
+  MENTION
+  INVITE
+  COMMENT
+  STATUS_CHANGE
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  INVITE_MEMBER
+  CHANGE_ROLE
+  STATUS_CHANGE
+}
+
 model User {
   id            String         @id @default(cuid())
   name          String
@@ -32,12 +62,20 @@ model User {
   assignedItems ActionItem[]   @relation("AssignedItems")
   createdItems  ActionItem[]   @relation("CreatedItems")
   refreshTokens RefreshToken[]
+
+  ownedGoals     Goal[]       @relation("OwnedGoals")
+goalUpdates    GoalUpdate[] @relation("GoalUpdates")
+comments       Comment[]
+reactions      Reaction[]
+notifications  Notification[]
+auditLogs      AuditLog[]   @relation("AuditActor")
 }
 
 model Team {
   id            String         @id @default(cuid())
   name          String
   description   String?
+  accentColor   String?        @default("#0f172a")
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -45,6 +83,10 @@ model Team {
   goals         Goal[]
   announcements Announcement[]
   actionItems   ActionItem[]
+  comments      Comment[]
+  reactions     Reaction[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
 }
 
 model TeamMember {
@@ -62,15 +104,26 @@ model TeamMember {
 }
 
 model Goal {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   title       String
   description String?
-  completed   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status      GoalStatus @default(NOT_STARTED)
+  dueDate     DateTime?
+  completed   Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
   teamId      String
-  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  ownerId     String?
+
+  team        Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  owner       User?      @relation("OwnedGoals", fields: [ownerId], references: [id])
+
+  milestones  Milestone[]
+  updates     GoalUpdate[]
+  actionItems ActionItem[]
+  comments    Comment[]
+  reactions   Reaction[]
 }
 
 model Announcement {
@@ -78,6 +131,7 @@ model Announcement {
   title         String
   content       String
   attachmentUrl String?
+  isPinned      Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -86,6 +140,9 @@ model Announcement {
 
   team          Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
   author        User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  comments      Comment[]
+  reactions     Reaction[]
 }
 
 model ActionItem {
@@ -93,6 +150,7 @@ model ActionItem {
   title         String
   description   String?
   status        ActionStatus @default(TODO)
+  priority      Priority     @default(MEDIUM)
   dueDate       DateTime?
   attachmentUrl String?
   createdAt     DateTime     @default(now())
@@ -101,10 +159,12 @@ model ActionItem {
   teamId        String
   assigneeId    String?
   creatorId     String
+  goalId        String?
 
   team          Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
   assignee      User?        @relation("AssignedItems", fields: [assigneeId], references: [id])
   creator       User         @relation("CreatedItems", fields: [creatorId], references: [id])
+  goal          Goal?        @relation(fields: [goalId], references: [id])
 }
 
 model RefreshToken {
@@ -115,4 +175,95 @@ model RefreshToken {
 
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Milestone {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  progress    Int      @default(0)
+  dueDate     DateTime?
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  goalId      String
+  goal        Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+}
+
+model GoalUpdate {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  goalId    String
+  authorId  String
+
+  goal      Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  author    User     @relation("GoalUpdates", fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+model Comment {
+  id             String   @id @default(cuid())
+  content        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  teamId         String
+  authorId       String
+  announcementId String?
+  goalId         String?
+
+  team           Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  author         User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  announcement   Announcement? @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  goal           Goal?    @relation(fields: [goalId], references: [id], onDelete: Cascade)
+}
+
+model Reaction {
+  id             String   @id @default(cuid())
+  emoji          String
+  createdAt      DateTime @default(now())
+
+  teamId         String
+  userId         String
+  announcementId String?
+  goalId         String?
+
+  team           Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  announcement   Announcement? @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  goal           Goal?    @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, announcementId, emoji])
+  @@unique([userId, goalId, emoji])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  message   String
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  teamId    String
+  userId    String
+
+  team      Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  action    AuditAction
+  entity    String
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime    @default(now())
+
+  teamId    String
+  actorId   String
+
+  team      Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  actor     User        @relation("AuditActor", fields: [actorId], references: [id], onDelete: Cascade)
 }

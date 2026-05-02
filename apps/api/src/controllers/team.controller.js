@@ -11,17 +11,21 @@ async function getMembership(userId, teamId) {
   });
 }
 
-function canManageMembers(role) {
+function canManageWorkspace(role) {
   return role === "OWNER" || role === "ADMIN";
+}
+
+function isValidMemberRole(role) {
+  return ["ADMIN", "MEMBER"].includes(role);
 }
 
 export async function createTeam(req, res, next) {
   try {
-    const { name, description } = req.body;
+    const { name, description, accentColor } = req.body;
 
     if (!name) {
       return res.status(400).json({
-        message: "Team name is required"
+        message: "Workspace name is required"
       });
     }
 
@@ -29,6 +33,7 @@ export async function createTeam(req, res, next) {
       data: {
         name,
         description,
+        accentColor: accentColor || "#0f172a",
         members: {
           create: {
             userId: req.user.id,
@@ -48,12 +53,19 @@ export async function createTeam(req, res, next) {
               }
             }
           }
+        },
+        _count: {
+          select: {
+            goals: true,
+            announcements: true,
+            actionItems: true
+          }
         }
       }
     });
 
     res.status(201).json({
-      message: "Team created successfully",
+      message: "Workspace created successfully",
       team
     });
   } catch (error) {
@@ -113,7 +125,7 @@ export async function getTeamById(req, res, next) {
 
     if (!membership) {
       return res.status(403).json({
-        message: "You are not a member of this team"
+        message: "You are not a member of this workspace"
       });
     }
 
@@ -138,6 +150,32 @@ export async function getTeamById(req, res, next) {
           }
         },
         goals: {
+          include: {
+            owner: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatarUrl: true
+              }
+            },
+            milestones: true,
+            updates: {
+              include: {
+                author: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    avatarUrl: true
+                  }
+                }
+              },
+              orderBy: {
+                createdAt: "desc"
+              }
+            }
+          },
           orderBy: {
             createdAt: "desc"
           }
@@ -151,11 +189,32 @@ export async function getTeamById(req, res, next) {
                 email: true,
                 avatarUrl: true
               }
-            }
+            },
+            comments: {
+              include: {
+                author: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    avatarUrl: true
+                  }
+                }
+              },
+              orderBy: {
+                createdAt: "asc"
+              }
+            },
+            reactions: true
           },
-          orderBy: {
-            createdAt: "desc"
-          }
+          orderBy: [
+            {
+              isPinned: "desc"
+            },
+            {
+              createdAt: "desc"
+            }
+          ]
         },
         actionItems: {
           include: {
@@ -174,6 +233,12 @@ export async function getTeamById(req, res, next) {
                 email: true,
                 avatarUrl: true
               }
+            },
+            goal: {
+              select: {
+                id: true,
+                title: true
+              }
             }
           },
           orderBy: {
@@ -185,7 +250,7 @@ export async function getTeamById(req, res, next) {
 
     if (!team) {
       return res.status(404).json({
-        message: "Team not found"
+        message: "Workspace not found"
       });
     }
 
@@ -197,7 +262,61 @@ export async function getTeamById(req, res, next) {
   }
 }
 
-export async function addTeamMember(req, res, next) {
+export async function updateTeam(req, res, next) {
+  try {
+    const { teamId } = req.params;
+    const { name, description, accentColor } = req.body;
+
+    const membership = await getMembership(req.user.id, teamId);
+
+    if (!membership || !canManageWorkspace(membership.role)) {
+      return res.status(403).json({
+        message: "Only workspace owners and admins can update workspace settings"
+      });
+    }
+
+    const team = await prisma.team.update({
+      where: {
+        id: teamId
+      },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(description !== undefined && { description }),
+        ...(accentColor !== undefined && { accentColor })
+      },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatarUrl: true
+              }
+            }
+          }
+        },
+        _count: {
+          select: {
+            goals: true,
+            announcements: true,
+            actionItems: true
+          }
+        }
+      }
+    });
+
+    res.json({
+      message: "Workspace updated successfully",
+      team
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function inviteTeamMember(req, res, next) {
   try {
     const { teamId } = req.params;
     const { email, role = "MEMBER" } = req.body;
@@ -208,7 +327,7 @@ export async function addTeamMember(req, res, next) {
       });
     }
 
-    if (!["ADMIN", "MEMBER"].includes(role)) {
+    if (!isValidMemberRole(role)) {
       return res.status(400).json({
         message: "Role must be ADMIN or MEMBER"
       });
@@ -216,35 +335,35 @@ export async function addTeamMember(req, res, next) {
 
     const requesterMembership = await getMembership(req.user.id, teamId);
 
-    if (!requesterMembership || !canManageMembers(requesterMembership.role)) {
+    if (!requesterMembership || !canManageWorkspace(requesterMembership.role)) {
       return res.status(403).json({
-        message: "Only team owners and admins can add members"
+        message: "Only workspace owners and admins can invite members"
       });
     }
 
-    const userToAdd = await prisma.user.findUnique({
+    const userToInvite = await prisma.user.findUnique({
       where: {
         email
       }
     });
 
-    if (!userToAdd) {
+    if (!userToInvite) {
       return res.status(404).json({
-        message: "No user found with this email"
+        message: "No registered user found with this email"
       });
     }
 
-    const existingMembership = await getMembership(userToAdd.id, teamId);
+    const existingMembership = await getMembership(userToInvite.id, teamId);
 
     if (existingMembership) {
       return res.status(409).json({
-        message: "User is already a team member"
+        message: "User is already a workspace member"
       });
     }
 
     const member = await prisma.teamMember.create({
       data: {
-        userId: userToAdd.id,
+        userId: userToInvite.id,
         teamId,
         role
       },
@@ -261,7 +380,71 @@ export async function addTeamMember(req, res, next) {
     });
 
     res.status(201).json({
-      message: "Member added successfully",
+      message: "Member invited successfully",
+      member
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateMemberRole(req, res, next) {
+  try {
+    const { teamId, userId } = req.params;
+    const { role } = req.body;
+
+    if (!isValidMemberRole(role)) {
+      return res.status(400).json({
+        message: "Role must be ADMIN or MEMBER"
+      });
+    }
+
+    const requesterMembership = await getMembership(req.user.id, teamId);
+
+    if (!requesterMembership || requesterMembership.role !== "OWNER") {
+      return res.status(403).json({
+        message: "Only workspace owners can change member roles"
+      });
+    }
+
+    const memberToUpdate = await getMembership(userId, teamId);
+
+    if (!memberToUpdate) {
+      return res.status(404).json({
+        message: "Workspace member not found"
+      });
+    }
+
+    if (memberToUpdate.role === "OWNER") {
+      return res.status(400).json({
+        message: "Workspace owner role cannot be changed"
+      });
+    }
+
+    const member = await prisma.teamMember.update({
+      where: {
+        userId_teamId: {
+          userId,
+          teamId
+        }
+      },
+      data: {
+        role
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatarUrl: true
+          }
+        }
+      }
+    });
+
+    res.json({
+      message: "Member role updated successfully",
       member
     });
   } catch (error) {
@@ -275,9 +458,9 @@ export async function removeTeamMember(req, res, next) {
 
     const requesterMembership = await getMembership(req.user.id, teamId);
 
-    if (!requesterMembership || !canManageMembers(requesterMembership.role)) {
+    if (!requesterMembership || !canManageWorkspace(requesterMembership.role)) {
       return res.status(403).json({
-        message: "Only team owners and admins can remove members"
+        message: "Only workspace owners and admins can remove members"
       });
     }
 
@@ -285,13 +468,13 @@ export async function removeTeamMember(req, res, next) {
 
     if (!memberToRemove) {
       return res.status(404).json({
-        message: "Team member not found"
+        message: "Workspace member not found"
       });
     }
 
     if (memberToRemove.role === "OWNER") {
       return res.status(400).json({
-        message: "Team owner cannot be removed"
+        message: "Workspace owner cannot be removed"
       });
     }
 

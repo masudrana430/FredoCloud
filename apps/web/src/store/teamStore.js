@@ -34,6 +34,69 @@ export const useTeamStore = create(set => ({
     return res.data.team;
   },
 
+  updateTeam: async (teamId, formData) => {
+    const res = await api.patch(`/api/teams/${teamId}`, formData);
+
+    set(state => ({
+      teams: state.teams.map(team =>
+        team.id === teamId ? res.data.team : team
+      ),
+      activeTeam:
+        state.activeTeam?.id === teamId ? res.data.team : state.activeTeam
+    }));
+
+    return res.data.team;
+  },
+
+  inviteMember: async (teamId, formData) => {
+    const res = await api.post(`/api/teams/${teamId}/invite`, formData);
+
+    set(state => ({
+      activeTeam: state.activeTeam
+        ? {
+            ...state.activeTeam,
+            members: [...state.activeTeam.members, res.data.member]
+          }
+        : state.activeTeam
+    }));
+
+    return res.data.member;
+  },
+
+  updateMemberRole: async (teamId, userId, role) => {
+    const res = await api.patch(`/api/teams/${teamId}/members/${userId}/role`, {
+      role
+    });
+
+    set(state => ({
+      activeTeam: state.activeTeam
+        ? {
+            ...state.activeTeam,
+            members: state.activeTeam.members.map(member =>
+              member.userId === userId ? res.data.member : member
+            )
+          }
+        : state.activeTeam
+    }));
+
+    return res.data.member;
+  },
+
+  removeMember: async (teamId, userId) => {
+    await api.delete(`/api/teams/${teamId}/members/${userId}`);
+
+    set(state => ({
+      activeTeam: state.activeTeam
+        ? {
+            ...state.activeTeam,
+            members: state.activeTeam.members.filter(
+              member => member.userId !== userId
+            )
+          }
+        : state.activeTeam
+    }));
+  },
+
   fetchTeamById: async teamId => {
     set({ loading: true });
 
