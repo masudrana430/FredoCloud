@@ -28,6 +28,10 @@ export function useTeamSocket(teamId, onTeamUpdate) {
     socket.on("milestone:deleted", onTeamUpdate);
     socket.on("goal-update:created", onTeamUpdate);
 
+    socket.on("announcement-comment:created", onTeamUpdate);
+    socket.on("announcement-comment:deleted", onTeamUpdate);
+    socket.on("announcement-reaction:updated", onTeamUpdate);
+
 
 
     return () => {
