@@ -12,6 +12,7 @@ import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 
 const GOAL_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED", "ON_HOLD"];
+const ANNOUNCEMENT_EMOJIS = ["👍", "🎉", "🚀", "❤️", "✅"];
 
 export default function TeamPage({ params }) {
   const { teamId } = use(params);
@@ -51,11 +52,13 @@ export default function TeamPage({ params }) {
 
   const [milestoneForms, setMilestoneForms] = useState({});
   const [goalUpdateForms, setGoalUpdateForms] = useState({});
+  const [commentForms, setCommentForms] = useState({});
 
   const [announcementForm, setAnnouncementForm] = useState({
     title: "",
     content: "",
-    attachment: null
+    attachment: null,
+    isPinned: false
   });
 
   const [actionItemForm, setActionItemForm] = useState({
@@ -135,11 +138,11 @@ export default function TeamPage({ params }) {
   }
 
   function handleAnnouncementChange(event) {
-    const { name, value, files } = event.target;
+    const { name, value, files, type, checked } = event.target;
 
     setAnnouncementForm({
       ...announcementForm,
-      [name]: files ? files[0] : value
+      [name]: files ? files[0] : type === "checkbox" ? checked : value
     });
   }
 
@@ -177,6 +180,81 @@ export default function TeamPage({ params }) {
     }));
   }
 
+  function handleCommentChange(announcementId, event) {
+    setCommentForms(previous => ({
+      ...previous,
+      [announcementId]: event.target.value
+    }));
+  }
+
+  function getReactionCount(announcement, emoji) {
+    return (
+      announcement.reactions?.filter(reaction => reaction.emoji === emoji)
+        .length || 0
+    );
+  }
+
+  function hasUserReacted(announcement, emoji) {
+    return announcement.reactions?.some(
+      reaction => reaction.emoji === emoji && reaction.userId === user?.id
+    );
+  }
+
+  async function handleToggleAnnouncementPin(announcement) {
+    setError("");
+
+    try {
+      await api.patch(`/api/announcements/${announcement.id}`, {
+        isPinned: !announcement.isPinned
+      });
+
+      await refreshTeam();
+    } catch (error) {
+      setError(
+        error.response?.data?.message || "Failed to update announcement pin"
+      );
+    }
+  }
+
+  async function handleAnnouncementReaction(announcementId, emoji) {
+    setError("");
+
+    try {
+      await api.post(`/api/announcements/${announcementId}/reactions`, {
+        emoji
+      });
+
+      await refreshTeam();
+    } catch (error) {
+      setError(error.response?.data?.message || "Failed to react");
+    }
+  }
+
+  async function handleCreateAnnouncementComment(event, announcementId) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(`comment-${announcementId}`);
+
+    try {
+      await api.post(`/api/announcements/${announcementId}/comments`, {
+        content: commentForms[announcementId]
+      });
+
+      setCommentForms(previous => ({
+        ...previous,
+        [announcementId]: ""
+      }));
+
+      await refreshTeam();
+    } catch (error) {
+      setError(error.response?.data?.message || "Failed to add comment");
+    } finally {
+      setSubmitting("");
+    }
+  }
+
+
+
   function getAverageMilestoneProgress(goal) {
     if (!goal.milestones || goal.milestones.length === 0) {
       return goal.status === "COMPLETED" ? 100 : 0;
@@ -189,6 +267,8 @@ export default function TeamPage({ params }) {
 
     return Math.round(total / goal.milestones.length);
   }
+
+
 
   async function handleUpdateWorkspace(event) {
     event.preventDefault();
@@ -374,7 +454,7 @@ export default function TeamPage({ params }) {
 
       formData.append("teamId", teamId);
       formData.append("title", announcementForm.title);
-      formData.append("content", announcementForm.content);
+      formData.append("isPinned", String(announcementForm.isPinned));
 
       if (announcementForm.attachment) {
         formData.append("attachment", announcementForm.attachment);
@@ -385,7 +465,8 @@ export default function TeamPage({ params }) {
       setAnnouncementForm({
         title: "",
         content: "",
-        attachment: null
+        attachment: null,
+        isPinned: false
       });
 
       event.target.reset();
@@ -739,6 +820,10 @@ export default function TeamPage({ params }) {
                   Create Announcement
                 </h2>
 
+                <p className="mt-1 text-sm text-slate-600">
+                  Use multiple lines for rich-text-style formatting.
+                </p>
+
                 <div className="mt-4 space-y-3">
                   <Input
                     name="title"
@@ -750,12 +835,25 @@ export default function TeamPage({ params }) {
 
                   <Textarea
                     name="content"
-                    placeholder="Announcement content"
+                    placeholder={"Announcement content\n\nExample:\n- Update 1\n- Update 2\n\nNext steps..."}
                     value={announcementForm.content}
                     onChange={handleAnnouncementChange}
-                    rows={4}
+                    rows={6}
                     required
                   />
+
+                  {canManageWorkspace && (
+                    <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-medium text-slate-700">
+                      <input
+                        name="isPinned"
+                        type="checkbox"
+                        checked={announcementForm.isPinned}
+                        onChange={handleAnnouncementChange}
+                        className="h-4 w-4"
+                      />
+                      Pin this announcement
+                    </label>
+                  )}
 
                   <input
                     name="attachment"
@@ -1153,7 +1251,7 @@ export default function TeamPage({ params }) {
                   Announcements
                 </h2>
 
-                <div className="mt-4 space-y-3">
+                <div className="mt-4 space-y-4">
                   {activeTeam.announcements?.length === 0 ? (
                     <p className="text-sm text-slate-600">
                       No announcements yet.
@@ -1162,19 +1260,44 @@ export default function TeamPage({ params }) {
                     activeTeam.announcements?.map(announcement => (
                       <div
                         key={announcement.id}
-                        className="rounded-2xl border border-slate-200 p-4"
+                        className={`rounded-2xl border p-4 ${announcement.isPinned
+                            ? "border-amber-300 bg-amber-50"
+                            : "border-slate-200 bg-white"
+                          }`}
                       >
-                        <p className="font-semibold text-slate-950">
-                          {announcement.title}
-                        </p>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold text-slate-950">
+                                {announcement.title}
+                              </p>
 
-                        <p className="mt-1 text-sm text-slate-600">
-                          {announcement.content}
-                        </p>
+                              {announcement.isPinned && (
+                                <span className="rounded-full bg-amber-200 px-2 py-1 text-xs font-bold text-amber-900">
+                                  Pinned
+                                </span>
+                              )}
+                            </div>
 
-                        <p className="mt-2 text-xs text-slate-500">
-                          Posted by {announcement.author?.name}
-                        </p>
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                              {announcement.content}
+                            </p>
+
+                            <p className="mt-2 text-xs text-slate-500">
+                              Posted by {announcement.author?.name}
+                            </p>
+                          </div>
+
+                          {canManageWorkspace && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAnnouncementPin(announcement)}
+                              className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                            >
+                              {announcement.isPinned ? "Unpin" : "Pin"}
+                            </button>
+                          )}
+                        </div>
 
                         {announcement.attachmentUrl && (
                           <a
@@ -1185,6 +1308,79 @@ export default function TeamPage({ params }) {
                             View attachment
                           </a>
                         )}
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {ANNOUNCEMENT_EMOJIS.map(emoji => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() =>
+                                handleAnnouncementReaction(announcement.id, emoji)
+                              }
+                              className={`rounded-full border px-3 py-1 text-sm font-medium transition ${hasUserReacted(announcement, emoji)
+                                  ? "border-slate-950 bg-slate-950 text-white"
+                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-950"
+                                }`}
+                            >
+                              {emoji} {getReactionCount(announcement, emoji)}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="mt-5 border-t border-slate-200 pt-4">
+                          <h4 className="text-sm font-bold text-slate-950">
+                            Comments
+                          </h4>
+
+                          <div className="mt-3 space-y-3">
+                            {announcement.comments?.length === 0 ? (
+                              <p className="text-sm text-slate-500">
+                                No comments yet.
+                              </p>
+                            ) : (
+                              announcement.comments?.map(comment => (
+                                <div
+                                  key={comment.id}
+                                  className="rounded-2xl bg-slate-50 p-3"
+                                >
+                                  <p className="text-sm text-slate-700">
+                                    {comment.content}
+                                  </p>
+
+                                  <p className="mt-2 text-xs text-slate-500">
+                                    {comment.author?.name} ·{" "}
+                                    {new Date(comment.createdAt).toLocaleString()}
+                                  </p>
+                                </div>
+                              ))
+                            )}
+                          </div>
+
+                          <form
+                            onSubmit={event =>
+                              handleCreateAnnouncementComment(event, announcement.id)
+                            }
+                            className="mt-3 flex gap-2"
+                          >
+                            <Input
+                              placeholder="Write a comment..."
+                              value={commentForms[announcement.id] || ""}
+                              onChange={event =>
+                                handleCommentChange(announcement.id, event)
+                              }
+                              required
+                            />
+
+                            <Button
+                              type="submit"
+                              disabled={submitting === `comment-${announcement.id}`}
+                            >
+                              {submitting === `comment-${announcement.id}`
+                                ? "Posting..."
+                                : "Comment"}
+                            </Button>
+                          </form>
+                        </div>
                       </div>
                     ))
                   )}
