@@ -10,9 +10,17 @@ import { useTeamSocket } from "@/hooks/useTeamSocket";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer
+} from "recharts";
 
 const GOAL_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED", "ON_HOLD"];
 const ANNOUNCEMENT_EMOJIS = ["👍", "🎉", "🚀", "❤️", "✅"];
+const CHART_COLORS = ["#16a34a", "#2563eb", "#64748b", "#f59e0b"];
 
 const ACTION_STATUSES = ["TODO", "IN_PROGRESS", "DONE"];
 const ACTION_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
@@ -33,6 +41,8 @@ export default function TeamPage({ params }) {
     updateMemberRole,
     removeMember
   } = useTeamStore();
+
+  const [analytics, setAnalytics] = useState(null);
 
   const [workspaceForm, setWorkspaceForm] = useState({
     name: "",
@@ -81,6 +91,14 @@ export default function TeamPage({ params }) {
 
   const refreshTeam = useCallback(async () => {
     await fetchTeamById(teamId);
+    await loadAnalytics();
+
+    try {
+      const res = await api.get(`/api/analytics/${teamId}`);
+      setAnalytics(res.data);
+    } catch {
+      setAnalytics(null);
+    }
   }, [fetchTeamById, teamId]);
 
   const [notifications, setNotifications] = useState([]);
@@ -155,6 +173,13 @@ export default function TeamPage({ params }) {
       loadNotifications();
     }
   }, [user]);
+
+  function handleExportCsv() {
+    window.open(
+      `${process.env.NEXT_PUBLIC_API_URL || "https://api-production-e292.up.railway.app"}/api/analytics/${teamId}/export.csv`,
+      "_blank"
+    );
+  }
 
   function handleWorkspaceChange(event) {
     setWorkspaceForm({
@@ -250,6 +275,36 @@ export default function TeamPage({ params }) {
     if (priority === "HIGH") return "bg-orange-100 text-orange-700";
     if (priority === "MEDIUM") return "bg-blue-100 text-blue-700";
     return "bg-slate-100 text-slate-700";
+  }
+
+  async function loadAnalytics() {
+    try {
+      const res = await api.get(`/api/analytics/${teamId}`);
+      setAnalytics(res.data);
+    } catch {
+      setAnalytics(null);
+    }
+  }
+
+  async function handleExportCsv() {
+    try {
+      const response = await api.get(`/api/analytics/${teamId}/export.csv`, {
+        responseType: "blob"
+      });
+
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+
+      link.href = blobUrl;
+      link.setAttribute("download", `${activeTeam.name}-export.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      setError(error.response?.data?.message || "Failed to export CSV");
+    }
   }
 
 
@@ -735,6 +790,117 @@ export default function TeamPage({ params }) {
           </p>
         )}
 
+        {analytics && (
+          <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-950">
+                    Workspace Analytics
+                  </h2>
+
+                  <p className="mt-1 text-sm text-slate-600">
+                    Track goal completion, weekly progress, and overdue work.
+                  </p>
+                </div>
+
+                <Button type="button" onClick={handleExportCsv}>
+                  Export CSV
+                </Button>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-4">
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-sm font-medium text-slate-500">Total Goals</p>
+                  <p className="mt-2 text-3xl font-bold text-slate-950">
+                    {analytics.stats.totalGoals}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-sm font-medium text-slate-500">
+                    Completed This Week
+                  </p>
+                  <p className="mt-2 text-3xl font-bold text-slate-950">
+                    {analytics.stats.completedItemsThisWeek}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-sm font-medium text-slate-500">Overdue</p>
+                  <p className="mt-2 text-3xl font-bold text-red-600">
+                    {analytics.stats.overdueCount}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <p className="text-sm font-medium text-slate-500">
+                    Goal Completion
+                  </p>
+                  <p className="mt-2 text-3xl font-bold text-slate-950">
+                    {analytics.stats.goalCompletionRate}%
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-bold text-slate-950">
+                Goal Completion Chart
+              </h3>
+
+              <div className="mt-4 h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={analytics.goalStatusChart}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={55}
+                      outerRadius={85}
+                      paddingAngle={4}
+                    >
+                      {analytics.goalStatusChart.map((entry, index) => (
+                        <Cell
+                          key={entry.name}
+                          fill={CHART_COLORS[index % CHART_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {analytics.goalStatusChart.map((entry, index) => (
+                  <div
+                    key={entry.name}
+                    className="flex items-center justify-between text-sm"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-3 w-3 rounded-full"
+                        style={{
+                          backgroundColor:
+                            CHART_COLORS[index % CHART_COLORS.length]
+                        }}
+                      />
+                      <span className="text-slate-600">{entry.name}</span>
+                    </div>
+
+                    <span className="font-semibold text-slate-950">
+                      {entry.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+
+
         <section className="mt-6 grid gap-6 lg:grid-cols-[340px_1fr]">
           <aside className="space-y-6">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -760,8 +926,8 @@ export default function TeamPage({ params }) {
 
                     <p
                       className={`mt-2 text-xs font-bold ${onlineMemberIds.has(member.user.id)
-                          ? "text-emerald-600"
-                          : "text-slate-400"
+                        ? "text-emerald-600"
+                        : "text-slate-400"
                         }`}
                     >
                       {onlineMemberIds.has(member.user.id) ? "● Online" : "○ Offline"}

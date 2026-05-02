@@ -9,6 +9,7 @@ import announcementRoutes from "./routes/announcement.routes.js";
 import actionItemRoutes from "./routes/actionItem.routes.js";
 import { errorMiddleware } from "./middlewares/error.middleware.js";
 import notificationRoutes from "./routes/notification.routes.js";
+import analyticsRoutes from "./routes/analytics.routes.js";
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use("/api/goals", goalRoutes);
 app.use("/api/announcements", announcementRoutes);
 app.use("/api/action-items", actionItemRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 app.use(errorMiddleware);
 
