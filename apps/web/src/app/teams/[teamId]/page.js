@@ -11,6 +11,8 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 
+const GOAL_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED", "ON_HOLD"];
+
 export default function TeamPage({ params }) {
   const { teamId } = use(params);
   const router = useRouter();
@@ -41,8 +43,14 @@ export default function TeamPage({ params }) {
 
   const [goalForm, setGoalForm] = useState({
     title: "",
-    description: ""
+    description: "",
+    ownerId: "",
+    dueDate: "",
+    status: "NOT_STARTED"
   });
+
+  const [milestoneForms, setMilestoneForms] = useState({});
+  const [goalUpdateForms, setGoalUpdateForms] = useState({});
 
   const [announcementForm, setAnnouncementForm] = useState({
     title: "",
@@ -144,6 +152,44 @@ export default function TeamPage({ params }) {
     });
   }
 
+  function handleMilestoneChange(goalId, event) {
+    const { name, value } = event.target;
+
+    setMilestoneForms(previous => ({
+      ...previous,
+      [goalId]: {
+        title: "",
+        description: "",
+        progress: 0,
+        dueDate: "",
+        ...(previous[goalId] || {}),
+        [name]: value
+      }
+    }));
+  }
+
+  function handleGoalUpdateChange(goalId, event) {
+    const { value } = event.target;
+
+    setGoalUpdateForms(previous => ({
+      ...previous,
+      [goalId]: value
+    }));
+  }
+
+  function getAverageMilestoneProgress(goal) {
+    if (!goal.milestones || goal.milestones.length === 0) {
+      return goal.status === "COMPLETED" ? 100 : 0;
+    }
+
+    const total = goal.milestones.reduce(
+      (sum, milestone) => sum + Number(milestone.progress || 0),
+      0
+    );
+
+    return Math.round(total / goal.milestones.length);
+  }
+
   async function handleUpdateWorkspace(event) {
     event.preventDefault();
     setError("");
@@ -211,17 +257,108 @@ export default function TeamPage({ params }) {
       await api.post("/api/goals", {
         teamId,
         title: goalForm.title,
-        description: goalForm.description
+        description: goalForm.description,
+        ownerId: goalForm.ownerId || null,
+        dueDate: goalForm.dueDate || null,
+        status: goalForm.status
       });
 
       setGoalForm({
         title: "",
-        description: ""
+        description: "",
+        ownerId: "",
+        dueDate: "",
+        status: "NOT_STARTED"
       });
 
       await refreshTeam();
     } catch (error) {
       setError(error.response?.data?.message || "Failed to create goal");
+    } finally {
+      setSubmitting("");
+    }
+  }
+
+  async function handleUpdateGoal(goalId, payload) {
+    setError("");
+
+    try {
+      await api.patch(`/api/goals/${goalId}`, payload);
+      await refreshTeam();
+    } catch (error) {
+      setError(error.response?.data?.message || "Failed to update goal");
+    }
+  }
+
+  async function handleCreateMilestone(event, goalId) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(`milestone-${goalId}`);
+
+    const form = milestoneForms[goalId] || {
+      title: "",
+      description: "",
+      progress: 0,
+      dueDate: ""
+    };
+
+    try {
+      await api.post(`/api/goals/${goalId}/milestones`, {
+        title: form.title,
+        description: form.description,
+        progress: Number(form.progress || 0),
+        dueDate: form.dueDate || null
+      });
+
+      setMilestoneForms(previous => ({
+        ...previous,
+        [goalId]: {
+          title: "",
+          description: "",
+          progress: 0,
+          dueDate: ""
+        }
+      }));
+
+      await refreshTeam();
+    } catch (error) {
+      setError(error.response?.data?.message || "Failed to create milestone");
+    } finally {
+      setSubmitting("");
+    }
+  }
+
+  async function handleUpdateMilestone(goalId, milestoneId, payload) {
+    setError("");
+
+    try {
+      await api.patch(`/api/goals/${goalId}/milestones/${milestoneId}`, payload);
+      await refreshTeam();
+    } catch (error) {
+      setError(error.response?.data?.message || "Failed to update milestone");
+    }
+  }
+
+  async function handleCreateGoalUpdate(event, goalId) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(`goal-update-${goalId}`);
+
+    try {
+      await api.post(`/api/goals/${goalId}/updates`, {
+        content: goalUpdateForms[goalId]
+      });
+
+      setGoalUpdateForms(previous => ({
+        ...previous,
+        [goalId]: ""
+      }));
+
+      await refreshTeam();
+    } catch (error) {
+      setError(
+        error.response?.data?.message || "Failed to add progress update"
+      );
     } finally {
       setSubmitting("");
     }
@@ -546,6 +683,40 @@ export default function TeamPage({ params }) {
                   onChange={handleGoalChange}
                   rows={3}
                 />
+
+                <select
+                  name="ownerId"
+                  value={goalForm.ownerId}
+                  onChange={handleGoalChange}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-950"
+                >
+                  <option value="">No owner</option>
+                  {activeTeam.members?.map(member => (
+                    <option key={member.user.id} value={member.user.id}>
+                      {member.user.name}
+                    </option>
+                  ))}
+                </select>
+
+                <Input
+                  name="dueDate"
+                  type="date"
+                  value={goalForm.dueDate}
+                  onChange={handleGoalChange}
+                />
+
+                <select
+                  name="status"
+                  value={goalForm.status}
+                  onChange={handleGoalChange}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-950"
+                >
+                  {GOAL_STATUSES.map(status => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <Button
@@ -673,36 +844,310 @@ export default function TeamPage({ params }) {
               </form>
             </section>
 
-            <section className="grid gap-6 xl:grid-cols-3">
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-bold text-slate-950">Goals</h2>
+            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="text-xl font-bold text-slate-950">
+                Goals & Milestones
+              </h2>
 
-                <div className="mt-4 space-y-3">
-                  {activeTeam.goals?.length === 0 ? (
-                    <p className="text-sm text-slate-600">No goals yet.</p>
-                  ) : (
-                    activeTeam.goals?.map(goal => (
-                      <div
+              <div className="mt-5 space-y-5">
+                {activeTeam.goals?.length === 0 ? (
+                  <p className="text-sm text-slate-600">No goals yet.</p>
+                ) : (
+                  activeTeam.goals?.map(goal => {
+                    const progress = getAverageMilestoneProgress(goal);
+                    const milestoneForm = milestoneForms[goal.id] || {
+                      title: "",
+                      description: "",
+                      progress: 0,
+                      dueDate: ""
+                    };
+
+                    return (
+                      <article
                         key={goal.id}
-                        className="rounded-2xl border border-slate-200 p-4"
+                        className="rounded-3xl border border-slate-200 p-5"
                       >
-                        <p className="font-semibold text-slate-950">
-                          {goal.title}
-                        </p>
+                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                          <div>
+                            <h3 className="text-lg font-bold text-slate-950">
+                              {goal.title}
+                            </h3>
 
-                        <p className="mt-1 text-sm text-slate-600">
-                          {goal.description || "No description"}
-                        </p>
+                            <p className="mt-1 text-sm text-slate-600">
+                              {goal.description || "No description"}
+                            </p>
 
-                        <p className="mt-2 text-xs font-bold uppercase text-slate-500">
-                          {goal.completed ? "Completed" : "In progress"}
-                        </p>
-                      </div>
-                    ))
-                  )}
-                </div>
+                            <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium text-slate-600">
+                              <span className="rounded-full bg-slate-100 px-3 py-1">
+                                Status: {goal.status || "NOT_STARTED"}
+                              </span>
+
+                              <span className="rounded-full bg-slate-100 px-3 py-1">
+                                Owner: {goal.owner?.name || "Unassigned"}
+                              </span>
+
+                              {goal.dueDate && (
+                                <span className="rounded-full bg-slate-100 px-3 py-1">
+                                  Due:{" "}
+                                  {new Date(goal.dueDate).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="min-w-[220px] space-y-2">
+                            <select
+                              value={goal.status || "NOT_STARTED"}
+                              onChange={event =>
+                                handleUpdateGoal(goal.id, {
+                                  status: event.target.value
+                                })
+                              }
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900"
+                            >
+                              {GOAL_STATUSES.map(status => (
+                                <option key={status} value={status}>
+                                  {status}
+                                </option>
+                              ))}
+                            </select>
+
+                            <select
+                              value={goal.ownerId || ""}
+                              onChange={event =>
+                                handleUpdateGoal(goal.id, {
+                                  ownerId: event.target.value || null
+                                })
+                              }
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900"
+                            >
+                              <option value="">No owner</option>
+                              {activeTeam.members?.map(member => (
+                                <option
+                                  key={member.user.id}
+                                  value={member.user.id}
+                                >
+                                  {member.user.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="mt-5">
+                          <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-600">
+                            <span>Milestone progress</span>
+                            <span>{progress}%</span>
+                          </div>
+
+                          <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className="h-full rounded-full bg-slate-950 transition-all"
+                              style={{
+                                width: `${progress}%`
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+                          <div>
+                            <h4 className="font-semibold text-slate-950">
+                              Milestones
+                            </h4>
+
+                            <div className="mt-3 space-y-3">
+                              {goal.milestones?.length === 0 ? (
+                                <p className="text-sm text-slate-600">
+                                  No milestones yet.
+                                </p>
+                              ) : (
+                                goal.milestones?.map(milestone => (
+                                  <div
+                                    key={milestone.id}
+                                    className="rounded-2xl border border-slate-200 p-3"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <p className="font-semibold text-slate-950">
+                                          {milestone.title}
+                                        </p>
+
+                                        <p className="text-sm text-slate-600">
+                                          {milestone.description ||
+                                            "No description"}
+                                        </p>
+
+                                        {milestone.dueDate && (
+                                          <p className="mt-1 text-xs text-slate-500">
+                                            Due{" "}
+                                            {new Date(
+                                              milestone.dueDate
+                                            ).toLocaleDateString()}
+                                          </p>
+                                        )}
+                                      </div>
+
+                                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">
+                                        {milestone.progress}%
+                                      </span>
+                                    </div>
+
+                                    <input
+                                      type="range"
+                                      min="0"
+                                      max="100"
+                                      value={milestone.progress}
+                                      onChange={event =>
+                                        handleUpdateMilestone(
+                                          goal.id,
+                                          milestone.id,
+                                          {
+                                            progress: Number(event.target.value)
+                                          }
+                                        )
+                                      }
+                                      className="mt-3 w-full"
+                                    />
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            <form
+                              onSubmit={event =>
+                                handleCreateMilestone(event, goal.id)
+                              }
+                              className="mt-4 rounded-2xl border border-dashed border-slate-300 p-4"
+                            >
+                              <h5 className="text-sm font-bold text-slate-950">
+                                Add milestone
+                              </h5>
+
+                              <div className="mt-3 space-y-3">
+                                <Input
+                                  name="title"
+                                  placeholder="Milestone title"
+                                  value={milestoneForm.title}
+                                  onChange={event =>
+                                    handleMilestoneChange(goal.id, event)
+                                  }
+                                  required
+                                />
+
+                                <Textarea
+                                  name="description"
+                                  placeholder="Milestone description"
+                                  value={milestoneForm.description}
+                                  onChange={event =>
+                                    handleMilestoneChange(goal.id, event)
+                                  }
+                                  rows={2}
+                                />
+
+                                <Input
+                                  name="progress"
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  placeholder="Progress %"
+                                  value={milestoneForm.progress}
+                                  onChange={event =>
+                                    handleMilestoneChange(goal.id, event)
+                                  }
+                                />
+
+                                <Input
+                                  name="dueDate"
+                                  type="date"
+                                  value={milestoneForm.dueDate}
+                                  onChange={event =>
+                                    handleMilestoneChange(goal.id, event)
+                                  }
+                                />
+                              </div>
+
+                              <Button
+                                type="submit"
+                                disabled={submitting === `milestone-${goal.id}`}
+                                className="mt-3 w-full"
+                              >
+                                {submitting === `milestone-${goal.id}`
+                                  ? "Adding..."
+                                  : "Add Milestone"}
+                              </Button>
+                            </form>
+                          </div>
+
+                          <div>
+                            <h4 className="font-semibold text-slate-950">
+                              Activity Feed
+                            </h4>
+
+                            <form
+                              onSubmit={event =>
+                                handleCreateGoalUpdate(event, goal.id)
+                              }
+                              className="mt-3"
+                            >
+                              <Textarea
+                                placeholder="Post a progress update..."
+                                value={goalUpdateForms[goal.id] || ""}
+                                onChange={event =>
+                                  handleGoalUpdateChange(goal.id, event)
+                                }
+                                rows={3}
+                                required
+                              />
+
+                              <Button
+                                type="submit"
+                                disabled={
+                                  submitting === `goal-update-${goal.id}`
+                                }
+                                className="mt-3 w-full"
+                              >
+                                {submitting === `goal-update-${goal.id}`
+                                  ? "Posting..."
+                                  : "Post Update"}
+                              </Button>
+                            </form>
+
+                            <div className="mt-4 space-y-3">
+                              {goal.updates?.length === 0 ? (
+                                <p className="text-sm text-slate-600">
+                                  No progress updates yet.
+                                </p>
+                              ) : (
+                                goal.updates?.map(update => (
+                                  <div
+                                    key={update.id}
+                                    className="rounded-2xl border border-slate-200 p-3"
+                                  >
+                                    <p className="text-sm text-slate-700">
+                                      {update.content}
+                                    </p>
+
+                                    <p className="mt-2 text-xs text-slate-500">
+                                      {update.author?.name} ·{" "}
+                                      {new Date(
+                                        update.createdAt
+                                      ).toLocaleString()}
+                                    </p>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })
+                )}
               </div>
+            </section>
 
+            <section className="grid gap-6 xl:grid-cols-2">
               <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-bold text-slate-950">
                   Announcements
