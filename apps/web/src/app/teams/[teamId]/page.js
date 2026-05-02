@@ -83,11 +83,29 @@ export default function TeamPage({ params }) {
     await fetchTeamById(teamId);
   }, [fetchTeamById, teamId]);
 
-  useTeamSocket(teamId, refreshTeam);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const { onlineMembers } = useTeamSocket(
+    teamId,
+    refreshTeam,
+    user,
+    notification => {
+      setNotifications(previous => [notification, ...previous]);
+    }
+  );
 
   const currentMembership = useMemo(() => {
     return activeTeam?.members?.find(member => member.user.id === user?.id);
   }, [activeTeam, user]);
+
+  const onlineMemberIds = useMemo(() => {
+    return new Set(onlineMembers.map(member => member.id));
+  }, [onlineMembers]);
+
+  const unreadNotificationCount = notifications.filter(
+    notification => !notification.read
+  ).length;
 
   const canManageWorkspace =
     currentMembership?.role === "OWNER" || currentMembership?.role === "ADMIN";
@@ -122,6 +140,21 @@ export default function TeamPage({ params }) {
       });
     }
   }, [activeTeam]);
+
+  useEffect(() => {
+    async function loadNotifications() {
+      try {
+        const res = await api.get("/api/notifications");
+        setNotifications(res.data.notifications);
+      } catch {
+        setNotifications([]);
+      }
+    }
+
+    if (user?.id) {
+      loadNotifications();
+    }
+  }, [user]);
 
   function handleWorkspaceChange(event) {
     setWorkspaceForm({
@@ -570,6 +603,21 @@ export default function TeamPage({ params }) {
     }
   }
 
+  async function handleMarkAllNotificationsRead() {
+    try {
+      await api.patch("/api/notifications/read-all");
+
+      setNotifications(previous =>
+        previous.map(notification => ({
+          ...notification,
+          read: true
+        }))
+      );
+    } catch (error) {
+      setError(error.response?.data?.message || "Failed to update notifications");
+    }
+  }
+
   if (loading || !activeTeam) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-900">
@@ -622,6 +670,63 @@ export default function TeamPage({ params }) {
               {activeTeam.actionItems?.length || 0} action items
             </span>
           </div>
+
+          {/* ADD NOTIFICATION PANEL HERE */}
+          <div className="relative mt-5">
+            <button
+              type="button"
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              Notifications
+              {unreadNotificationCount > 0 && (
+                <span className="ml-2 rounded-full bg-red-600 px-2 py-0.5 text-xs text-white">
+                  {unreadNotificationCount}
+                </span>
+              )}
+            </button>
+
+            {showNotifications && (
+              <div className="absolute z-20 mt-3 w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-slate-950">Notifications</h3>
+
+                  <button
+                    type="button"
+                    onClick={handleMarkAllNotificationsRead}
+                    className="text-xs font-semibold text-slate-600 underline"
+                  >
+                    Mark all read
+                  </button>
+                </div>
+
+                <div className="mt-3 max-h-80 space-y-2 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <p className="text-sm text-slate-500">
+                      No notifications yet.
+                    </p>
+                  ) : (
+                    notifications.map(notification => (
+                      <div
+                        key={notification.id}
+                        className={`rounded-xl p-3 text-sm ${notification.read
+                          ? "bg-slate-50 text-slate-600"
+                          : "bg-blue-50 text-slate-900"
+                          }`}
+                      >
+                        <p>{notification.message}</p>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          {notification.team?.name} ·{" "}
+                          {new Date(notification.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </header>
 
         {error && (
@@ -651,6 +756,15 @@ export default function TeamPage({ params }) {
 
                     <p className="mt-1 text-xs font-bold uppercase text-slate-500">
                       {member.role}
+                    </p>
+
+                    <p
+                      className={`mt-2 text-xs font-bold ${onlineMemberIds.has(member.user.id)
+                          ? "text-emerald-600"
+                          : "text-slate-400"
+                        }`}
+                    >
+                      {onlineMemberIds.has(member.user.id) ? "● Online" : "○ Offline"}
                     </p>
 
                     {isOwner && member.role !== "OWNER" && (
@@ -1419,7 +1533,7 @@ export default function TeamPage({ params }) {
                             className="mt-3 flex gap-2"
                           >
                             <Input
-                              placeholder="Write a comment..."
+                              placeholder="Write a comment... mention with @email@example.com"
                               value={commentForms[announcement.id] || ""}
                               onChange={event =>
                                 handleCommentChange(announcement.id, event)
@@ -1460,8 +1574,8 @@ export default function TeamPage({ params }) {
                       type="button"
                       onClick={() => setActionView("kanban")}
                       className={`rounded-lg px-3 py-2 text-sm font-semibold ${actionView === "kanban"
-                          ? "bg-slate-950 text-white"
-                          : "text-slate-600"
+                        ? "bg-slate-950 text-white"
+                        : "text-slate-600"
                         }`}
                     >
                       Kanban
@@ -1471,8 +1585,8 @@ export default function TeamPage({ params }) {
                       type="button"
                       onClick={() => setActionView("list")}
                       className={`rounded-lg px-3 py-2 text-sm font-semibold ${actionView === "list"
-                          ? "bg-slate-950 text-white"
-                          : "text-slate-600"
+                        ? "bg-slate-950 text-white"
+                        : "text-slate-600"
                         }`}
                     >
                       List
