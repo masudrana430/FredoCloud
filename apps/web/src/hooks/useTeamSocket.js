@@ -49,6 +49,8 @@ export function useTeamSocket(teamId, onTeamUpdate, user, onNotification) {
     socket.on("action-item:updated", onTeamUpdate);
     socket.on("action-item:deleted", onTeamUpdate);
 
+    socket.on("audit-log:created", onTeamUpdate);
+
     return () => {
       socket.emit("team:leave", teamId);
 
@@ -74,6 +76,8 @@ export function useTeamSocket(teamId, onTeamUpdate, user, onNotification) {
       socket.off("action-item:created", onTeamUpdate);
       socket.off("action-item:updated", onTeamUpdate);
       socket.off("action-item:deleted", onTeamUpdate);
+
+      socket.off("audit-log:created", onTeamUpdate);
     };
   }, [teamId, user, onTeamUpdate, onNotification]);
 

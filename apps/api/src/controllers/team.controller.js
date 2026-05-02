@@ -1,4 +1,8 @@
+// apps/api/src/controllers/team.controller.js
+
 import prisma from "../config/db.js";
+import { PERMISSIONS, requirePermission } from "../utils/rbac.js";
+import { createAuditLog } from "../utils/auditLog.js";
 
 async function getMembership(userId, teamId) {
   return prisma.teamMember.findUnique({
@@ -9,10 +13,6 @@ async function getMembership(userId, teamId) {
       }
     }
   });
-}
-
-function canManageWorkspace(role) {
-  return role === "OWNER" || role === "ADMIN";
 }
 
 function isValidMemberRole(role) {
@@ -61,6 +61,19 @@ export async function createTeam(req, res, next) {
             actionItems: true
           }
         }
+      }
+    });
+
+    await createAuditLog({
+      teamId: team.id,
+      actorId: req.user.id,
+      action: "CREATE",
+      entity: "Workspace",
+      entityId: team.id,
+      metadata: {
+        name: team.name,
+        description: team.description,
+        accentColor: team.accentColor
       }
     });
 
@@ -159,7 +172,11 @@ export async function getTeamById(req, res, next) {
                 avatarUrl: true
               }
             },
-            milestones: true,
+            milestones: {
+              orderBy: {
+                createdAt: "asc"
+              }
+            },
             updates: {
               include: {
                 author: {
@@ -205,7 +222,17 @@ export async function getTeamById(req, res, next) {
                 createdAt: "asc"
               }
             },
-            reactions: true
+            reactions: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true
+                  }
+                }
+              }
+            }
           },
           orderBy: [
             {
@@ -269,11 +296,7 @@ export async function updateTeam(req, res, next) {
 
     const membership = await getMembership(req.user.id, teamId);
 
-    if (!membership || !canManageWorkspace(membership.role)) {
-      return res.status(403).json({
-        message: "Only workspace owners and admins can update workspace settings"
-      });
-    }
+    requirePermission(membership, PERMISSIONS.WORKSPACE_UPDATE);
 
     const team = await prisma.team.update({
       where: {
@@ -307,6 +330,19 @@ export async function updateTeam(req, res, next) {
       }
     });
 
+    await createAuditLog({
+      teamId,
+      actorId: req.user.id,
+      action: "UPDATE",
+      entity: "Workspace",
+      entityId: teamId,
+      metadata: {
+        name,
+        description,
+        accentColor
+      }
+    });
+
     res.json({
       message: "Workspace updated successfully",
       team
@@ -335,11 +371,7 @@ export async function inviteTeamMember(req, res, next) {
 
     const requesterMembership = await getMembership(req.user.id, teamId);
 
-    if (!requesterMembership || !canManageWorkspace(requesterMembership.role)) {
-      return res.status(403).json({
-        message: "Only workspace owners and admins can invite members"
-      });
-    }
+    requirePermission(requesterMembership, PERMISSIONS.MEMBER_INVITE);
 
     const userToInvite = await prisma.user.findUnique({
       where: {
@@ -379,6 +411,27 @@ export async function inviteTeamMember(req, res, next) {
       }
     });
 
+    await prisma.notification.create({
+      data: {
+        type: "INVITE",
+        message: `You were invited to a workspace as ${role}`,
+        teamId,
+        userId: userToInvite.id
+      }
+    });
+
+    await createAuditLog({
+      teamId,
+      actorId: req.user.id,
+      action: "INVITE_MEMBER",
+      entity: "TeamMember",
+      entityId: member.id,
+      metadata: {
+        invitedEmail: email,
+        role
+      }
+    });
+
     res.status(201).json({
       message: "Member invited successfully",
       member
@@ -401,11 +454,7 @@ export async function updateMemberRole(req, res, next) {
 
     const requesterMembership = await getMembership(req.user.id, teamId);
 
-    if (!requesterMembership || requesterMembership.role !== "OWNER") {
-      return res.status(403).json({
-        message: "Only workspace owners can change member roles"
-      });
-    }
+    requirePermission(requesterMembership, PERMISSIONS.MEMBER_ROLE_CHANGE);
 
     const memberToUpdate = await getMembership(userId, teamId);
 
@@ -443,6 +492,18 @@ export async function updateMemberRole(req, res, next) {
       }
     });
 
+    await createAuditLog({
+      teamId,
+      actorId: req.user.id,
+      action: "CHANGE_ROLE",
+      entity: "TeamMember",
+      entityId: member.id,
+      metadata: {
+        userId,
+        role
+      }
+    });
+
     res.json({
       message: "Member role updated successfully",
       member
@@ -458,11 +519,7 @@ export async function removeTeamMember(req, res, next) {
 
     const requesterMembership = await getMembership(req.user.id, teamId);
 
-    if (!requesterMembership || !canManageWorkspace(requesterMembership.role)) {
-      return res.status(403).json({
-        message: "Only workspace owners and admins can remove members"
-      });
-    }
+    requirePermission(requesterMembership, PERMISSIONS.MEMBER_REMOVE);
 
     const memberToRemove = await getMembership(userId, teamId);
 
@@ -478,12 +535,33 @@ export async function removeTeamMember(req, res, next) {
       });
     }
 
+    if (
+      requesterMembership.role === "ADMIN" &&
+      memberToRemove.role === "ADMIN"
+    ) {
+      return res.status(403).json({
+        message: "Admins cannot remove other admins"
+      });
+    }
+
     await prisma.teamMember.delete({
       where: {
         userId_teamId: {
           userId,
           teamId
         }
+      }
+    });
+
+    await createAuditLog({
+      teamId,
+      actorId: req.user.id,
+      action: "DELETE",
+      entity: "TeamMember",
+      entityId: userId,
+      metadata: {
+        removedUserId: userId,
+        removedRole: memberToRemove.role
       }
     });
 

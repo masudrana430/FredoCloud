@@ -1,14 +1,22 @@
 # Collaborative Team Hub
 
-A full-stack team collaboration platform built for the FredoCloud intern assignment.
+A full-stack collaborative workspace platform built for the FredoCloud technical assessment.
 
-Users can create teams, manage shared goals, post announcements, track action items, upload avatars and attachments, and receive real-time updates through Socket.io.
+Live Frontend: https://web-production-ef8eb.up.railway.app  
+API Health Check: https://api-production-e292.up.railway.app/health
+
+## Demo Account
+
+Email: demo@fredocloud.app  
+Password: Demo@123456
+
+The demo account includes a sample workspace with goals, milestones, announcements, action items, analytics, and audit log data.
 
 ## Tech Stack
 
 ### Monorepo
 - Turborepo
-- pnpm workspace
+- pnpm workspaces
 
 ### Frontend
 - Next.js App Router
@@ -17,153 +25,114 @@ Users can create teams, manage shared goals, post announcements, track action it
 - Zustand
 - Axios
 - Socket.io Client
+- Recharts
 
 ### Backend
 - Node.js
 - Express.js
-- Prisma ORM
 - PostgreSQL
-- JWT authentication
+- Prisma ORM
+- JWT access and refresh tokens
 - httpOnly cookies
 - Socket.io
 - Cloudinary
 - Multer
 
 ### Deployment
-- Railway
-- Frontend and backend deployed as separate services
+- Railway frontend service
+- Railway backend service
+- Railway PostgreSQL database
+- Cloudinary for media uploads
 
 ## Features
 
-- User registration and login
-- JWT access and refresh tokens in httpOnly cookies
-- Protected routes
-- Team creation and member listing
-- Shared goals
-- Team announcements
-- Action items with assignee, due date, and status
-- Avatar upload with Cloudinary
-- Announcement and action item attachments
-- Real-time team updates with Socket.io
-- PostgreSQL database with Prisma migrations
+### Authentication
+- Email/password registration and login
+- Protected dashboard route
+- Logout
+- Token refresh with httpOnly cookies
+- User avatar upload through Cloudinary
 
-## Project Structure
+### Workspaces
+- Create and switch between multiple workspaces
+- Workspace name, description, and accent colour
+- Invite members by email
+- Assign Owner, Admin, and Member roles
 
-```txt
-collaborative-team-hub/
-├── apps/
-│   ├── api/
-│   │   ├── prisma/
-│   │   └── src/
-│   └── web/
-│       └── src/
-├── packages/
-├── pnpm-workspace.yaml
-├── turbo.json
-└── package.json
+### Goals and Milestones
+- Create goals with title, owner, due date, and status
+- Add nested milestones under goals
+- Track milestone progress percentage
+- Post progress updates to a goal activity feed
 
-Local Setup
-1. Clone the repository
-git clone https://github.com/masudrana430/FredoCloud.git
-cd FredoCloud
-2. Install dependencies
-pnpm install
-3. Configure backend environment
+### Announcements
+- Admins and owners can publish workspace-wide announcements
+- Rich-text-style multiline announcement content
+- Pin important announcements
+- Emoji reactions
+- Comments
+- @mention teammates in comments
 
-Copy:
+### Action Items
+- Create action items with assignee, priority, due date, and status
+- Link action items to a parent goal
+- Kanban board view
+- List view toggle
+- Attachment upload
 
-apps/api/.env.example
+### Real-time Features
+- Socket.io live updates for workspace activity
+- Online member presence
+- Live updates for goals, milestones, announcements, comments, reactions, action item status changes, and audit logs
 
-to:
+### Notifications
+- In-app notifications
+- @mention notifications
+- Mark all notifications as read
 
-apps/api/.env
+### Analytics
+- Total goals
+- Items completed this week
+- Overdue count
+- Goal completion chart using Recharts
+- Export workspace data as CSV
 
-Then add real values for:
+## Advanced Features Chosen
 
-DATABASE_URL
-JWT_ACCESS_SECRET
-JWT_REFRESH_SECRET
-CLOUDINARY_CLOUD_NAME
-CLOUDINARY_API_KEY
-CLOUDINARY_API_SECRET
-4. Configure frontend environment
+### 1. Advanced RBAC
 
-Copy:
+The app includes role-based access control for Owner, Admin, and Member roles.
 
-apps/web/.env.example
+Examples:
+- Owners can manage workspace settings, invite members, remove members, and change roles.
+- Admins can manage workspace content and invite/remove members.
+- Members can create and update goals and action items but cannot manage workspace settings or publish announcements.
 
-to:
+### 2. Audit Log
 
-apps/web/.env.local
-5. Run Prisma migrations
-cd apps/api
-pnpm prisma migrate dev
-pnpm prisma generate
-6. Run the project
+The app includes an immutable audit log for workspace changes.
 
-From the root:
+Tracked actions include:
+- Workspace creation and updates
+- Member invites
+- Role changes
+- Goal creation and updates
+- Announcement creation and updates
+- Action item creation and status changes
 
-pnpm dev
+The audit log can be filtered and exported as CSV.
 
-## Live Demo
+## Environment Variables
 
-Frontend: https://web-production-ef8eb.up.railway.app  
-Backend Health Check: https://api-production-e292.up.railway.app/health
+### Backend
 
-API Routes
-Auth
-POST /api/auth/register
-POST /api/auth/login
-POST /api/auth/refresh
-POST /api/auth/logout
-GET  /api/auth/me
-PATCH /api/auth/avatar
-Teams
-POST   /api/teams
-GET    /api/teams
-GET    /api/teams/:teamId
-POST   /api/teams/:teamId/members
-DELETE /api/teams/:teamId/members/:userId
-Goals
-POST   /api/goals
-GET    /api/goals/team/:teamId
-PATCH  /api/goals/:goalId
-DELETE /api/goals/:goalId
-Announcements
-POST   /api/announcements
-GET    /api/announcements/team/:teamId
-PATCH  /api/announcements/:announcementId
-DELETE /api/announcements/:announcementId
-Action Items
-POST   /api/action-items
-GET    /api/action-items/team/:teamId
-PATCH  /api/action-items/:itemId
-DELETE /api/action-items/:itemId
-Deployment Notes
-
-The project is deployed on Railway as two separate services:
-
-apps/api  -> backend service
-apps/web  -> frontend service
-
-The backend uses Railway PostgreSQL and Cloudinary.
-
-For production database migrations, use:
-
-pnpm prisma migrate deploy
-Git Convention
-
-This project uses conventional commit messages, for example:
-
-feat(api): add authentication endpoints
-feat(api): add team endpoints
-feat(api): add cloudinary file uploads
-feat(web): add team workspace interactions
-docs: add project setup instructions
-
-Then commit:
-
-```powershell
-git add README.md apps/api/.env.example apps/web/.env.example .gitignore
-git commit -m "docs: add setup and deployment instructions"
-git push
+```env
+DATABASE_URL=postgresql://...
+JWT_ACCESS_SECRET=...
+JWT_REFRESH_SECRET=...
+ACCESS_TOKEN_EXPIRES_IN=15m
+REFRESH_TOKEN_EXPIRES_IN=7d
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+CLIENT_URL=https://your-web-service.up.railway.app
