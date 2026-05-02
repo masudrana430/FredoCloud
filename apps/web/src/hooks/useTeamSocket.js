@@ -28,6 +28,8 @@ export function useTeamSocket(teamId, onTeamUpdate) {
     socket.on("milestone:deleted", onTeamUpdate);
     socket.on("goal-update:created", onTeamUpdate);
 
+
+
     return () => {
       socket.emit("team:leave", teamId);
 
@@ -47,6 +49,10 @@ export function useTeamSocket(teamId, onTeamUpdate) {
       socket.off("milestone:updated", onTeamUpdate);
       socket.off("milestone:deleted", onTeamUpdate);
       socket.off("goal-update:created", onTeamUpdate);
+
+      socket.off("announcement-comment:created", onTeamUpdate);
+      socket.off("announcement-comment:deleted", onTeamUpdate);
+      socket.off("announcement-reaction:updated", onTeamUpdate);
     };
   }, [teamId, onTeamUpdate]);
 }
