@@ -14,6 +14,9 @@ import Textarea from "@/components/ui/Textarea";
 const GOAL_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED", "ON_HOLD"];
 const ANNOUNCEMENT_EMOJIS = ["👍", "🎉", "🚀", "❤️", "✅"];
 
+const ACTION_STATUSES = ["TODO", "IN_PROGRESS", "DONE"];
+const ACTION_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+
 export default function TeamPage({ params }) {
   const { teamId } = use(params);
   const router = useRouter();
@@ -54,6 +57,8 @@ export default function TeamPage({ params }) {
   const [goalUpdateForms, setGoalUpdateForms] = useState({});
   const [commentForms, setCommentForms] = useState({});
 
+  const [actionView, setActionView] = useState("kanban");
+
   const [announcementForm, setAnnouncementForm] = useState({
     title: "",
     content: "",
@@ -65,6 +70,8 @@ export default function TeamPage({ params }) {
     title: "",
     description: "",
     assigneeId: "",
+    goalId: "",
+    priority: "MEDIUM",
     dueDate: "",
     attachment: null
   });
@@ -199,6 +206,20 @@ export default function TeamPage({ params }) {
       reaction => reaction.emoji === emoji && reaction.userId === user?.id
     );
   }
+
+
+  function getActionItemsByStatus(status) {
+    return activeTeam.actionItems?.filter(item => item.status === status) || [];
+  }
+
+  function getPriorityBadgeClass(priority) {
+    if (priority === "URGENT") return "bg-red-100 text-red-700";
+    if (priority === "HIGH") return "bg-orange-100 text-orange-700";
+    if (priority === "MEDIUM") return "bg-blue-100 text-blue-700";
+    return "bg-slate-100 text-slate-700";
+  }
+
+
 
   async function handleToggleAnnouncementPin(announcement) {
     setError("");
@@ -496,6 +517,12 @@ export default function TeamPage({ params }) {
         formData.append("assigneeId", actionItemForm.assigneeId);
       }
 
+      if (actionItemForm.goalId) {
+        formData.append("goalId", actionItemForm.goalId);
+      }
+
+      formData.append("priority", actionItemForm.priority);
+
       if (actionItemForm.dueDate) {
         formData.append("dueDate", actionItemForm.dueDate);
       }
@@ -510,6 +537,8 @@ export default function TeamPage({ params }) {
         title: "",
         description: "",
         assigneeId: "",
+        goalId: "",
+        priority: "MEDIUM",
         dueDate: "",
         attachment: null
       });
@@ -914,6 +943,33 @@ export default function TeamPage({ params }) {
                     ))}
                   </select>
 
+                  <select
+                    name="goalId"
+                    value={actionItemForm.goalId}
+                    onChange={handleActionItemChange}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-950"
+                  >
+                    <option value="">No parent goal</option>
+                    {activeTeam.goals?.map(goal => (
+                      <option key={goal.id} value={goal.id}>
+                        {goal.title}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    name="priority"
+                    value={actionItemForm.priority}
+                    onChange={handleActionItemChange}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-950"
+                  >
+                    {ACTION_PRIORITIES.map(priority => (
+                      <option key={priority} value={priority}>
+                        {priority}
+                      </option>
+                    ))}
+                  </select>
+
                   <Input
                     name="dueDate"
                     type="date"
@@ -1261,8 +1317,8 @@ export default function TeamPage({ params }) {
                       <div
                         key={announcement.id}
                         className={`rounded-2xl border p-4 ${announcement.isPinned
-                            ? "border-amber-300 bg-amber-50"
-                            : "border-slate-200 bg-white"
+                          ? "border-amber-300 bg-amber-50"
+                          : "border-slate-200 bg-white"
                           }`}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -1318,8 +1374,8 @@ export default function TeamPage({ params }) {
                                 handleAnnouncementReaction(announcement.id, emoji)
                               }
                               className={`rounded-full border px-3 py-1 text-sm font-medium transition ${hasUserReacted(announcement, emoji)
-                                  ? "border-slate-950 bg-slate-950 text-white"
-                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-950"
+                                ? "border-slate-950 bg-slate-950 text-white"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-950"
                                 }`}
                             >
                               {emoji} {getReactionCount(announcement, emoji)}
@@ -1387,72 +1443,205 @@ export default function TeamPage({ params }) {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-bold text-slate-950">
-                  Action Items
-                </h2>
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-950">
+                      Action Items
+                    </h2>
 
-                <div className="mt-4 space-y-3">
-                  {activeTeam.actionItems?.length === 0 ? (
-                    <p className="text-sm text-slate-600">
-                      No action items yet.
+                    <p className="mt-1 text-sm text-slate-600">
+                      Track work by priority, assignee, parent goal, and status.
                     </p>
-                  ) : (
-                    activeTeam.actionItems?.map(item => (
+                  </div>
+
+                  <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setActionView("kanban")}
+                      className={`rounded-lg px-3 py-2 text-sm font-semibold ${actionView === "kanban"
+                          ? "bg-slate-950 text-white"
+                          : "text-slate-600"
+                        }`}
+                    >
+                      Kanban
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActionView("list")}
+                      className={`rounded-lg px-3 py-2 text-sm font-semibold ${actionView === "list"
+                          ? "bg-slate-950 text-white"
+                          : "text-slate-600"
+                        }`}
+                    >
+                      List
+                    </button>
+                  </div>
+                </div>
+
+                {activeTeam.actionItems?.length === 0 ? (
+                  <p className="mt-4 text-sm text-slate-600">
+                    No action items yet.
+                  </p>
+                ) : actionView === "kanban" ? (
+                  <div className="mt-5 grid gap-4 lg:grid-cols-3">
+                    {ACTION_STATUSES.map(status => (
                       <div
-                        key={item.id}
-                        className="rounded-2xl border border-slate-200 p-4"
+                        key={status}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                       >
-                        <p className="font-semibold text-slate-950">
-                          {item.title}
-                        </p>
+                        <div className="mb-4 flex items-center justify-between">
+                          <h3 className="text-sm font-bold text-slate-800">
+                            {status}
+                          </h3>
 
-                        <p className="mt-1 text-sm text-slate-600">
-                          {item.description || "No description"}
-                        </p>
+                          <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-slate-500">
+                            {getActionItemsByStatus(status).length}
+                          </span>
+                        </div>
 
-                        <div className="mt-3">
+                        <div className="space-y-3">
+                          {getActionItemsByStatus(status).length === 0 ? (
+                            <p className="text-sm text-slate-500">No items.</p>
+                          ) : (
+                            getActionItemsByStatus(status).map(item => (
+                              <div
+                                key={item.id}
+                                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <p className="font-semibold text-slate-950">
+                                    {item.title}
+                                  </p>
+
+                                  <span
+                                    className={`rounded-full px-2 py-1 text-xs font-bold ${getPriorityBadgeClass(
+                                      item.priority
+                                    )}`}
+                                  >
+                                    {item.priority || "MEDIUM"}
+                                  </span>
+                                </div>
+
+                                <p className="mt-1 text-sm text-slate-600">
+                                  {item.description || "No description"}
+                                </p>
+
+                                {item.goal && (
+                                  <p className="mt-2 text-xs text-slate-500">
+                                    Goal: {item.goal.title}
+                                  </p>
+                                )}
+
+                                {item.assignee && (
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    Assigned to {item.assignee.name}
+                                  </p>
+                                )}
+
+                                {item.dueDate && (
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    Due {new Date(item.dueDate).toLocaleDateString()}
+                                  </p>
+                                )}
+
+                                {item.attachmentUrl && (
+                                  <a
+                                    href={item.attachmentUrl}
+                                    target="_blank"
+                                    className="mt-2 inline-block text-sm font-semibold text-slate-950 underline"
+                                  >
+                                    View attachment
+                                  </a>
+                                )}
+
+                                <select
+                                  value={item.status}
+                                  onChange={event =>
+                                    handleUpdateActionStatus(item.id, event.target.value)
+                                  }
+                                  className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-slate-950"
+                                >
+                                  {ACTION_STATUSES.map(statusOption => (
+                                    <option key={statusOption} value={statusOption}>
+                                      {statusOption}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+                    <div className="grid grid-cols-6 bg-slate-50 px-4 py-3 text-xs font-bold uppercase text-slate-500">
+                      <span className="col-span-2">Item</span>
+                      <span>Priority</span>
+                      <span>Status</span>
+                      <span>Assignee</span>
+                      <span>Goal</span>
+                    </div>
+
+                    <div className="divide-y divide-slate-200">
+                      {activeTeam.actionItems?.map(item => (
+                        <div
+                          key={item.id}
+                          className="grid grid-cols-6 items-center gap-3 px-4 py-4 text-sm"
+                        >
+                          <div className="col-span-2">
+                            <p className="font-semibold text-slate-950">
+                              {item.title}
+                            </p>
+
+                            <p className="text-slate-600">
+                              {item.description || "No description"}
+                            </p>
+
+                            {item.dueDate && (
+                              <p className="mt-1 text-xs text-slate-500">
+                                Due {new Date(item.dueDate).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+
+                          <span
+                            className={`w-fit rounded-full px-2 py-1 text-xs font-bold ${getPriorityBadgeClass(
+                              item.priority
+                            )}`}
+                          >
+                            {item.priority || "MEDIUM"}
+                          </span>
+
                           <select
                             value={item.status}
                             onChange={event =>
-                              handleUpdateActionStatus(
-                                item.id,
-                                event.target.value
-                              )
+                              handleUpdateActionStatus(item.id, event.target.value)
                             }
-                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-slate-950"
+                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900"
                           >
-                            <option value="TODO">TODO</option>
-                            <option value="IN_PROGRESS">IN_PROGRESS</option>
-                            <option value="DONE">DONE</option>
+                            {ACTION_STATUSES.map(statusOption => (
+                              <option key={statusOption} value={statusOption}>
+                                {statusOption}
+                              </option>
+                            ))}
                           </select>
+
+                          <span className="text-slate-600">
+                            {item.assignee?.name || "Unassigned"}
+                          </span>
+
+                          <span className="text-slate-600">
+                            {item.goal?.title || "No goal"}
+                          </span>
                         </div>
-
-                        {item.assignee && (
-                          <p className="mt-2 text-xs text-slate-500">
-                            Assigned to {item.assignee.name}
-                          </p>
-                        )}
-
-                        {item.dueDate && (
-                          <p className="mt-1 text-xs text-slate-500">
-                            Due {new Date(item.dueDate).toLocaleDateString()}
-                          </p>
-                        )}
-
-                        {item.attachmentUrl && (
-                          <a
-                            href={item.attachmentUrl}
-                            target="_blank"
-                            className="mt-3 inline-block text-sm font-semibold text-slate-950 underline"
-                          >
-                            View attachment
-                          </a>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
           </div>
