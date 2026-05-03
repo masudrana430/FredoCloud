@@ -11,6 +11,8 @@ import {
   ResponsiveContainer
 } from "recharts";
 
+import { motion, AnimatePresence } from "framer-motion";
+
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
 import { useTeamStore } from "@/store/teamStore";
@@ -19,15 +21,37 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 
+import Lottie from "lottie-react";
+import loaderAnimation from "@/assets/loader.json";
+
 const GOAL_STATUSES = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED", "ON_HOLD"];
 const ACTION_STATUSES = ["TODO", "IN_PROGRESS", "DONE"];
 const ACTION_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 const ANNOUNCEMENT_EMOJIS = ["👍", "🎉", "🚀", "❤️", "✅"];
-const CHART_COLORS = ["#16a34a", "#2563eb", "#64748b", "#f59e0b"];
+const CHART_COLORS = ["#22c55e", "#3b82f6", "#94a3b8", "#f59e0b"];
+const fadeUp = {
+  hidden: {
+    opacity: 0,
+    y: 18
+  },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.35,
+      ease: "easeOut"
+    }
+  }
+};
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://api-production-e292.up.railway.app";
+const stagger = {
+  hidden: {},
+  show: {
+    transition: {
+      staggerChildren: 0.06
+    }
+  }
+};
 
 export default function TeamPage({ params }) {
   const { teamId } = use(params);
@@ -88,7 +112,6 @@ export default function TeamPage({ params }) {
   });
 
   const [actionView, setActionView] = useState("kanban");
-
   const [analytics, setAnalytics] = useState(null);
 
   const [auditLogs, setAuditLogs] = useState([]);
@@ -131,7 +154,7 @@ export default function TeamPage({ params }) {
           `/api/audit-logs/${teamId}${query ? `?${query}` : ""}`
         );
 
-        setAuditLogs(res.data.logs);
+        setAuditLogs(res.data.logs || []);
       } catch {
         setAuditLogs([]);
       }
@@ -140,9 +163,17 @@ export default function TeamPage({ params }) {
   );
 
   const refreshTeam = useCallback(async () => {
-    await fetchTeamById(teamId);
-    await loadAnalytics();
-    await loadAuditLogs(auditFilter);
+    try {
+      await fetchTeamById(teamId, { silent: true });
+
+      Promise.allSettled([loadAnalytics(), loadAuditLogs(auditFilter)]);
+    } catch (error) {
+      setError(
+        error.response?.data?.message ||
+        error.message ||
+        "Failed to refresh workspace."
+      );
+    }
   }, [fetchTeamById, teamId, loadAnalytics, loadAuditLogs, auditFilter]);
 
   const handleSocketNotification = useCallback(notification => {
@@ -174,33 +205,54 @@ export default function TeamPage({ params }) {
   ).length;
 
   useEffect(() => {
+    let cancelled = false;
+
     async function initialize() {
-      const currentUser = await fetchMe();
+      try {
+        setError("");
 
-      if (!currentUser) {
-        router.push("/login");
-        return;
+        const currentUser = await fetchMe();
+
+        if (!currentUser) {
+          router.push("/login");
+          return;
+        }
+
+        if (!cancelled) {
+          await fetchTeamById(teamId);
+        }
+      } catch (error) {
+        console.error("WORKSPACE_LOAD_ERROR:", error);
+
+        if (!cancelled) {
+          setError(
+            error.response?.data?.message ||
+            error.message ||
+            "Failed to load workspace. Check backend terminal."
+          );
+        }
       }
-
-      await fetchTeamById(teamId);
-      await loadAnalytics();
-      await loadAuditLogs();
     }
 
     initialize();
 
     return () => {
+      cancelled = true;
       clearActiveTeam();
     };
-  }, [
-    teamId,
-    fetchMe,
-    fetchTeamById,
-    clearActiveTeam,
-    router,
-    loadAnalytics,
-    loadAuditLogs
-  ]);
+  }, [teamId, fetchMe, fetchTeamById, clearActiveTeam, router]);
+
+  useEffect(() => {
+    if (!activeTeam?.id) return;
+
+    loadAnalytics();
+  }, [activeTeam?.id, loadAnalytics]);
+
+  useEffect(() => {
+    if (!activeTeam?.id) return;
+
+    loadAuditLogs(auditFilter);
+  }, [activeTeam?.id, auditFilter, loadAuditLogs]);
 
   useEffect(() => {
     if (!activeTeam) return;
@@ -216,7 +268,7 @@ export default function TeamPage({ params }) {
     async function loadNotifications() {
       try {
         const res = await api.get("/api/notifications");
-        setNotifications(res.data.notifications);
+        setNotifications(res.data.notifications || []);
       } catch {
         setNotifications([]);
       }
@@ -297,13 +349,10 @@ export default function TeamPage({ params }) {
   }
 
   function handleAuditFilterChange(event) {
-    const nextFilters = {
-      ...auditFilter,
+    setAuditFilter(previous => ({
+      ...previous,
       [event.target.name]: event.target.value
-    };
-
-    setAuditFilter(nextFilters);
-    loadAuditLogs(nextFilters);
+    }));
   }
 
   function getAverageMilestoneProgress(goal) {
@@ -337,10 +386,30 @@ export default function TeamPage({ params }) {
   }
 
   function getPriorityBadgeClass(priority) {
-    if (priority === "URGENT") return "bg-red-100 text-red-700";
-    if (priority === "HIGH") return "bg-orange-100 text-orange-700";
-    if (priority === "MEDIUM") return "bg-blue-100 text-blue-700";
-    return "bg-slate-100 text-slate-700";
+    if (priority === "URGENT") return "bg-red-500/15 text-red-300 border-red-500/30";
+    if (priority === "HIGH") return "bg-orange-500/15 text-orange-300 border-orange-500/30";
+    if (priority === "MEDIUM") return "bg-blue-500/15 text-blue-300 border-blue-500/30";
+    return "bg-slate-500/15 text-slate-300 border-slate-500/30";
+  }
+
+  function WorkspaceLoading() {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.18),transparent_32%),radial-gradient(circle_at_top_right,rgba(124,58,237,0.16),transparent_30%),linear-gradient(135deg,#020617,#0f172a_45%,#111827)] px-6 text-white">
+        <div className="flex flex-col items-center rounded-[2rem] border border-slate-700/70 bg-slate-900/80 px-10 py-8 shadow-2xl shadow-black/40 backdrop-blur-xl">
+          <div className="h-44 w-44">
+            <Lottie animationData={loaderAnimation} loop autoplay />
+          </div>
+
+          <p className="mt-4 text-sm font-black tracking-wide text-slate-200">
+            Loading workspace...
+          </p>
+
+          <p className="mt-1 text-center text-xs text-slate-500">
+            Preparing members, goals, announcements, and action items
+          </p>
+        </div>
+      </main>
+    );
   }
 
   async function handleUpdateWorkspace(event) {
@@ -734,31 +803,53 @@ export default function TeamPage({ params }) {
     }
   }
 
-  if (loading || !activeTeam) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
-        <div className="rounded-3xl border border-white/10 bg-white/10 px-8 py-6 shadow-2xl backdrop-blur">
-          <p className="text-sm font-medium text-slate-200">
-            Loading workspace...
-          </p>
-        </div>
-      </main>
-    );
+  if (loading) {
+    return <WorkspaceLoading />;
+  }
+
+  if (!activeTeam) {
+    if (error) {
+      return (
+        <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.18),transparent_32%),radial-gradient(circle_at_top_right,rgba(124,58,237,0.16),transparent_30%),linear-gradient(135deg,#020617,#0f172a_45%,#111827)] px-6 text-white">
+          <div className="max-w-xl rounded-[2rem] border border-red-400/30 bg-red-950/40 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl">
+            <h1 className="text-2xl font-black">Workspace failed to load</h1>
+
+            <p className="mt-3 rounded-2xl bg-black/30 p-4 text-sm text-red-100">
+              {error}
+            </p>
+
+            <div className="mt-4 rounded-2xl bg-black/30 p-4 text-xs text-red-100">
+              <p>Workspace ID:</p>
+              <p className="mt-1 break-all font-mono">{teamId}</p>
+            </div>
+
+            <Link
+              href="/dashboard"
+              className="mt-6 inline-block rounded-xl bg-white px-4 py-2 text-sm font-bold text-slate-950"
+            >
+              Back to dashboard
+            </Link>
+          </div>
+        </main>
+      );
+    }
+
+    return <WorkspaceLoading />;
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#dbeafe,transparent_35%),linear-gradient(135deg,#f8fafc,#eef2ff)] px-6 py-8 text-slate-900">
+    <main className="workspace-page min-h-screen px-4 py-8 text-slate-900 dark:text-slate-100 sm:px-6">
       <div className="mx-auto max-w-7xl">
         <Link
           href="/dashboard"
-          className="inline-flex rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm backdrop-blur transition hover:border-slate-950 hover:text-slate-950"
+          className="inline-flex rounded-full border border-slate-700 bg-slate-900/80 px-4 py-2 text-sm font-bold text-slate-300 shadow-lg shadow-black/20 backdrop-blur transition hover:border-blue-400 hover:text-white"
         >
           ← Back to workspaces
         </Link>
 
-        <header className="mt-6 overflow-hidden rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-xl shadow-slate-200/70 backdrop-blur">
+        <header className="mt-6 overflow-hidden rounded-[2rem] border border-slate-700/60 bg-slate-900/80 p-6 shadow-2xl shadow-black/30 backdrop-blur-xl">
           <div
-            className="mb-5 h-2 rounded-full"
+            className="mb-5 h-2 rounded-full shadow-lg"
             style={{
               backgroundColor: activeTeam.accentColor || "#0f172a"
             }}
@@ -766,34 +857,25 @@ export default function TeamPage({ params }) {
 
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <p className="text-sm font-bold uppercase tracking-[0.25em] text-slate-400">
+              <p className="text-sm font-black uppercase tracking-[0.25em] text-blue-300/80">
                 Workspace Command Center
               </p>
 
-              <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-950">
+              <h1 className="mt-3 text-4xl font-black tracking-tight text-white">
                 {activeTeam.name}
               </h1>
 
-              <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+              <p className="mt-3 max-w-2xl text-base leading-7 text-slate-300">
                 {activeTeam.description || "No description"}
               </p>
 
-              <div className="mt-5 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
-                <span className="rounded-full bg-slate-100 px-3 py-1">
-                  Role: {currentMembership?.role || "Member"}
-                </span>
-
-                <span className="rounded-full bg-slate-100 px-3 py-1">
-                  {activeTeam.members?.length || 0} members
-                </span>
-
-                <span className="rounded-full bg-slate-100 px-3 py-1">
-                  {activeTeam.goals?.length || 0} goals
-                </span>
-
-                <span className="rounded-full bg-slate-100 px-3 py-1">
+              <div className="mt-5 flex flex-wrap gap-2 text-xs font-black text-slate-300">
+                <PremiumBadge>Role: {currentMembership?.role || "Member"}</PremiumBadge>
+                <PremiumBadge>{activeTeam.members?.length || 0} members</PremiumBadge>
+                <PremiumBadge>{activeTeam.goals?.length || 0} goals</PremiumBadge>
+                <PremiumBadge>
                   {activeTeam.actionItems?.length || 0} action items
-                </span>
+                </PremiumBadge>
               </div>
             </div>
 
@@ -801,7 +883,7 @@ export default function TeamPage({ params }) {
               <button
                 type="button"
                 onClick={() => setShowNotifications(!showNotifications)}
-                className="rounded-2xl border border-slate-200 bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-slate-800"
+                className="rounded-2xl border border-blue-400/20 bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-xl shadow-black/30 transition hover:border-blue-300 hover:bg-slate-800"
               >
                 Notifications
                 {unreadNotificationCount > 0 && (
@@ -812,16 +894,14 @@ export default function TeamPage({ params }) {
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 z-20 mt-3 w-[min(28rem,90vw)] rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl">
+                <div className="absolute right-0 z-20 mt-3 w-[min(28rem,90vw)] rounded-[2rem] border border-slate-700 bg-slate-950/95 p-4 shadow-2xl shadow-black/50 backdrop-blur-xl">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-black text-slate-950">
-                      Notifications
-                    </h3>
+                    <h3 className="font-black text-white">Notifications</h3>
 
                     <button
                       type="button"
                       onClick={handleMarkAllNotificationsRead}
-                      className="text-xs font-bold text-slate-600 underline"
+                      className="text-xs font-black text-blue-300 underline"
                     >
                       Mark all read
                     </button>
@@ -829,18 +909,17 @@ export default function TeamPage({ params }) {
 
                   <div className="mt-4 max-h-80 space-y-2 overflow-y-auto">
                     {notifications.length === 0 ? (
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-slate-400">
                         No notifications yet.
                       </p>
                     ) : (
                       notifications.map(notification => (
                         <div
                           key={notification.id}
-                          className={`rounded-2xl p-3 text-sm ${
-                            notification.read
-                              ? "bg-slate-50 text-slate-600"
-                              : "bg-blue-50 text-slate-900"
-                          }`}
+                          className={`rounded-2xl border p-3 text-sm ${notification.read
+                            ? "border-slate-800 bg-slate-900/70 text-slate-400"
+                            : "border-blue-400/30 bg-blue-500/10 text-slate-100"
+                            }`}
                         >
                           <p>{notification.message}</p>
 
@@ -859,24 +938,18 @@ export default function TeamPage({ params }) {
         </header>
 
         {error && (
-          <p className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-600">
+          <p className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm font-bold text-red-200">
             {error}
           </p>
         )}
 
         {analytics && (
           <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
-            <div className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-xl shadow-slate-200/70 backdrop-blur">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-2xl font-black text-slate-950">
-                    Analytics
-                  </h2>
-
-                  <p className="mt-1 text-sm text-slate-600">
-                    Completion, overdue work, and workspace delivery health.
-                  </p>
-                </div>
+            <Card title="Analytics">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <p className="text-sm text-slate-400">
+                  Completion, overdue work, and workspace delivery health.
+                </p>
 
                 <Button type="button" onClick={handleExportCsv}>
                   Export CSV
@@ -902,14 +975,10 @@ export default function TeamPage({ params }) {
                   value={`${analytics.stats.goalCompletionRate}%`}
                 />
               </div>
-            </div>
+            </Card>
 
-            <div className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-xl shadow-slate-200/70 backdrop-blur">
-              <h3 className="text-lg font-black text-slate-950">
-                Goal Status
-              </h3>
-
-              <div className="mt-4 h-64">
+            <Card title="Goal Status">
+              <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -946,62 +1015,61 @@ export default function TeamPage({ params }) {
                             CHART_COLORS[index % CHART_COLORS.length]
                         }}
                       />
-                      <span className="text-slate-600">{entry.name}</span>
+                      <span className="text-slate-300">{entry.name}</span>
                     </div>
 
-                    <span className="font-bold text-slate-950">
-                      {entry.value}
-                    </span>
+                    <span className="font-black text-white">{entry.value}</span>
                   </div>
                 ))}
               </div>
-            </div>
+            </Card>
           </section>
         )}
 
-        <section className="mt-6 grid gap-6 lg:grid-cols-[360px_1fr]">
-          <aside className="space-y-6">
+        <motion.section
+          variants={stagger}
+          initial="hidden"
+          animate="show"
+          className="mt-8 grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]"
+        >
+          <motion.aside variants={fadeUp} className="space-y-6 xl:sticky xl:top-6 xl:self-start">
             <Card title="Members">
               <div className="space-y-3">
                 {activeTeam.members?.map(member => (
-                  <div
+                  <motion.div
                     key={member.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-4"
+                    layout
+                    whileHover={{ y: -2 }}
+                    className="rounded-2xl border border-slate-700 bg-slate-950/50 p-4 transition hover:border-blue-400/40"
                   >
-                    <p className="font-bold text-slate-950">
-                      {member.user.name}
-                    </p>
-
-                    <p className="text-sm text-slate-600">
-                      {member.user.email}
-                    </p>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black uppercase text-slate-500">
-                        {member.role}
-                      </span>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-black text-white">{member.user.name}</p>
+                        <p className="truncate text-sm text-slate-400">{member.user.email}</p>
+                      </div>
 
                       <span
-                        className={`rounded-full px-2 py-1 text-xs font-black ${
-                          onlineMemberIds.has(member.user.id)
-                            ? "bg-emerald-50 text-emerald-600"
-                            : "bg-slate-100 text-slate-400"
-                        }`}
+                        className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-black ${onlineMemberIds.has(member.user.id)
+                          ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                          : "border-slate-700 bg-slate-800/70 text-slate-400"
+                          }`}
                       >
-                        {onlineMemberIds.has(member.user.id)
-                          ? "● Online"
-                          : "○ Offline"}
+                        {onlineMemberIds.has(member.user.id) ? "● Online" : "○ Offline"}
                       </span>
                     </div>
 
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <PremiumBadge>{member.role}</PremiumBadge>
+                    </div>
+
                     {isOwner && member.role !== "OWNER" && (
-                      <div className="mt-3 flex gap-2">
+                      <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
                         <select
                           value={member.role}
                           onChange={event =>
                             handleRoleChange(member.user.id, event.target.value)
                           }
-                          className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-900"
+                          className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-white"
                         >
                           <option value="MEMBER">Member</option>
                           <option value="ADMIN">Admin</option>
@@ -1010,13 +1078,13 @@ export default function TeamPage({ params }) {
                         <button
                           type="button"
                           onClick={() => handleRemoveMember(member.user.id)}
-                          className="rounded-xl border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
+                          className="rounded-xl border border-red-500/30 px-3 py-2 text-xs font-black text-red-300 transition hover:bg-red-500/10"
                         >
                           Remove
                         </button>
                       </div>
                     )}
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </Card>
@@ -1041,7 +1109,7 @@ export default function TeamPage({ params }) {
                   />
 
                   <div>
-                    <label className="text-sm font-bold text-slate-700">
+                    <label className="text-sm font-black text-slate-300">
                       Accent colour
                     </label>
 
@@ -1050,7 +1118,7 @@ export default function TeamPage({ params }) {
                       type="color"
                       value={workspaceForm.accentColor}
                       onChange={handleWorkspaceChange}
-                      className="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white p-1"
+                      className="mt-2 h-11 w-full rounded-xl border border-slate-700 bg-slate-950 p-1"
                     />
                   </div>
 
@@ -1059,7 +1127,7 @@ export default function TeamPage({ params }) {
                     disabled={submitting === "workspace"}
                     className="w-full"
                   >
-                    {submitting === "workspace" ? "Saving..." : "Save"}
+                    {submitting === "workspace" ? "Saving..." : "Save Workspace"}
                   </Button>
                 </form>
               </Card>
@@ -1081,7 +1149,7 @@ export default function TeamPage({ params }) {
                     name="role"
                     value={inviteForm.role}
                     onChange={handleInviteChange}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white"
                   >
                     <option value="MEMBER">Member</option>
                     <option value="ADMIN">Admin</option>
@@ -1092,7 +1160,7 @@ export default function TeamPage({ params }) {
                     disabled={submitting === "invite"}
                     className="w-full"
                   >
-                    {submitting === "invite" ? "Inviting..." : "Invite"}
+                    {submitting === "invite" ? "Inviting..." : "Invite Member"}
                   </Button>
                 </form>
               </Card>
@@ -1120,7 +1188,7 @@ export default function TeamPage({ params }) {
                   name="ownerId"
                   value={goalForm.ownerId}
                   onChange={handleGoalChange}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white"
                 >
                   <option value="">No owner</option>
                   {activeTeam.members?.map(member => (
@@ -1141,7 +1209,7 @@ export default function TeamPage({ params }) {
                   name="status"
                   value={goalForm.status}
                   onChange={handleGoalChange}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white"
                 >
                   {GOAL_STATUSES.map(status => (
                     <option key={status} value={status}>
@@ -1159,12 +1227,12 @@ export default function TeamPage({ params }) {
                 </Button>
               </form>
             </Card>
-          </aside>
+          </motion.aside>
 
-          <div className="space-y-6">
-            <section className="grid gap-6 xl:grid-cols-2">
+          <motion.div variants={stagger} className="min-w-0 space-y-6">
+            <motion.section variants={fadeUp} className="grid gap-6 2xl:grid-cols-2">
               {canManageWorkspace ? (
-                <Card title="Create Announcement">
+                <Card title="Create Announcement" className="min-h-full">
                   <form onSubmit={handleCreateAnnouncement} className="space-y-3">
                     <Input
                       name="title"
@@ -1176,16 +1244,14 @@ export default function TeamPage({ params }) {
 
                     <Textarea
                       name="content"
-                      placeholder={
-                        "Rich text style content\n\n- Update 1\n- Update 2\n\nNext steps..."
-                      }
+                      placeholder={"Rich text style content\n\n- Update 1\n- Update 2\n\nNext steps..."}
                       value={announcementForm.content}
                       onChange={handleAnnouncementChange}
                       rows={6}
                       required
                     />
 
-                    <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-bold text-slate-700">
+                    <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm font-bold text-slate-300">
                       <input
                         name="isPinned"
                         type="checkbox"
@@ -1201,7 +1267,7 @@ export default function TeamPage({ params }) {
                       type="file"
                       accept="image/*,.pdf"
                       onChange={handleAnnouncementChange}
-                      className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-xl file:border-0 file:bg-slate-950 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white"
+                      className="block w-full text-sm text-slate-400 file:mr-4 file:rounded-xl file:border-0 file:bg-white file:px-4 file:py-2 file:text-sm file:font-black file:text-slate-950"
                     />
 
                     <Button
@@ -1209,22 +1275,20 @@ export default function TeamPage({ params }) {
                       disabled={submitting === "announcement"}
                       className="w-full"
                     >
-                      {submitting === "announcement"
-                        ? "Posting..."
-                        : "Post Announcement"}
+                      {submitting === "announcement" ? "Posting..." : "Post Announcement"}
                     </Button>
                   </form>
                 </Card>
               ) : (
                 <Card title="Announcements">
-                  <p className="text-sm text-slate-600">
-                    Only workspace owners and admins can publish announcements.
-                    Members can still comment and react.
+                  <p className="text-sm text-slate-400">
+                    Only workspace owners and admins can publish announcements. Members
+                    can still comment and react.
                   </p>
                 </Card>
               )}
 
-              <Card title="Create Action Item">
+              <Card title="Create Action Item" className="min-h-full">
                 <form onSubmit={handleCreateActionItem} className="space-y-3">
                   <Input
                     name="title"
@@ -1242,60 +1306,62 @@ export default function TeamPage({ params }) {
                     rows={3}
                   />
 
-                  <select
-                    name="assigneeId"
-                    value={actionItemForm.assigneeId}
-                    onChange={handleActionItemChange}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"
-                  >
-                    <option value="">No assignee</option>
-                    {activeTeam.members?.map(member => (
-                      <option key={member.user.id} value={member.user.id}>
-                        {member.user.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <select
+                      name="assigneeId"
+                      value={actionItemForm.assigneeId}
+                      onChange={handleActionItemChange}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white"
+                    >
+                      <option value="">No assignee</option>
+                      {activeTeam.members?.map(member => (
+                        <option key={member.user.id} value={member.user.id}>
+                          {member.user.name}
+                        </option>
+                      ))}
+                    </select>
 
-                  <select
-                    name="goalId"
-                    value={actionItemForm.goalId}
-                    onChange={handleActionItemChange}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"
-                  >
-                    <option value="">No parent goal</option>
-                    {activeTeam.goals?.map(goal => (
-                      <option key={goal.id} value={goal.id}>
-                        {goal.title}
-                      </option>
-                    ))}
-                  </select>
+                    <select
+                      name="goalId"
+                      value={actionItemForm.goalId}
+                      onChange={handleActionItemChange}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white"
+                    >
+                      <option value="">No parent goal</option>
+                      {activeTeam.goals?.map(goal => (
+                        <option key={goal.id} value={goal.id}>
+                          {goal.title}
+                        </option>
+                      ))}
+                    </select>
 
-                  <select
-                    name="priority"
-                    value={actionItemForm.priority}
-                    onChange={handleActionItemChange}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"
-                  >
-                    {ACTION_PRIORITIES.map(priority => (
-                      <option key={priority} value={priority}>
-                        {priority}
-                      </option>
-                    ))}
-                  </select>
+                    <select
+                      name="priority"
+                      value={actionItemForm.priority}
+                      onChange={handleActionItemChange}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white"
+                    >
+                      {ACTION_PRIORITIES.map(priority => (
+                        <option key={priority} value={priority}>
+                          {priority}
+                        </option>
+                      ))}
+                    </select>
 
-                  <Input
-                    name="dueDate"
-                    type="date"
-                    value={actionItemForm.dueDate}
-                    onChange={handleActionItemChange}
-                  />
+                    <Input
+                      name="dueDate"
+                      type="date"
+                      value={actionItemForm.dueDate}
+                      onChange={handleActionItemChange}
+                    />
+                  </div>
 
                   <input
                     name="attachment"
                     type="file"
                     accept="image/*,.pdf"
                     onChange={handleActionItemChange}
-                    className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-xl file:border-0 file:bg-slate-950 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white"
+                    className="block w-full text-sm text-slate-400 file:mr-4 file:rounded-xl file:border-0 file:bg-white file:px-4 file:py-2 file:text-sm file:font-black file:text-slate-950"
                   />
 
                   <Button
@@ -1303,11 +1369,11 @@ export default function TeamPage({ params }) {
                     disabled={submitting === "actionItem"}
                     className="w-full"
                   >
-                    {submitting === "actionItem" ? "Creating..." : "Add Item"}
+                    {submitting === "actionItem" ? "Creating..." : "Add Action Item"}
                   </Button>
                 </form>
               </Card>
-            </section>
+            </motion.section>
 
             <Card title="Goals & Milestones">
               <div className="space-y-5">
@@ -1324,115 +1390,112 @@ export default function TeamPage({ params }) {
                     };
 
                     return (
-                      <article
+                      <motion.article
                         key={goal.id}
-                        className="rounded-3xl border border-slate-200 bg-white p-5"
+                        layout
+                        variants={fadeUp}
+                        className="rounded-[1.5rem] border border-slate-700 bg-slate-950/50 p-5"
                       >
-                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="grid gap-5 2xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
                           <div>
-                            <h3 className="text-lg font-black text-slate-950">
-                              {goal.title}
-                            </h3>
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <h3 className="break-words text-xl font-black text-white">
+                                  {goal.title}
+                                </h3>
 
-                            <p className="mt-1 text-sm text-slate-600">
-                              {goal.description || "No description"}
-                            </p>
+                                <p className="mt-2 break-words text-sm leading-6 text-slate-400">
+                                  {goal.description || "No description"}
+                                </p>
 
-                            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
-                              <Badge>Status: {goal.status || "NOT_STARTED"}</Badge>
-                              <Badge>
-                                Owner: {goal.owner?.name || "Unassigned"}
-                              </Badge>
-                              {goal.dueDate && (
-                                <Badge>
-                                  Due:{" "}
-                                  {new Date(goal.dueDate).toLocaleDateString()}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
+                                <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-300">
+                                  <Badge>Status: {goal.status || "NOT_STARTED"}</Badge>
+                                  <Badge>Owner: {goal.owner?.name || "Unassigned"}</Badge>
+                                  {goal.dueDate && (
+                                    <Badge>
+                                      Due: {new Date(goal.dueDate).toLocaleDateString()}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
 
-                          <div className="min-w-[220px] space-y-2">
-                            <select
-                              value={goal.status || "NOT_STARTED"}
-                              onChange={event =>
-                                handleUpdateGoal(goal.id, {
-                                  status: event.target.value
-                                })
-                              }
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-900"
-                            >
-                              {GOAL_STATUSES.map(status => (
-                                <option key={status} value={status}>
-                                  {status}
-                                </option>
-                              ))}
-                            </select>
-
-                            <select
-                              value={goal.ownerId || ""}
-                              onChange={event =>
-                                handleUpdateGoal(goal.id, {
-                                  ownerId: event.target.value || null
-                                })
-                              }
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-900"
-                            >
-                              <option value="">No owner</option>
-                              {activeTeam.members?.map(member => (
-                                <option
-                                  key={member.user.id}
-                                  value={member.user.id}
+                              <div className="grid min-w-[220px] gap-2">
+                                <select
+                                  value={goal.status || "NOT_STARTED"}
+                                  onChange={event =>
+                                    handleUpdateGoal(goal.id, {
+                                      status: event.target.value
+                                    })
+                                  }
+                                  className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-bold text-white"
                                 >
-                                  {member.user.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
+                                  {GOAL_STATUSES.map(status => (
+                                    <option key={status} value={status}>
+                                      {status}
+                                    </option>
+                                  ))}
+                                </select>
 
-                        <div className="mt-5">
-                          <div className="mb-2 flex items-center justify-between text-xs font-black text-slate-600">
-                            <span>Milestone progress</span>
-                            <span>{progress}%</span>
-                          </div>
+                                <select
+                                  value={goal.ownerId || ""}
+                                  onChange={event =>
+                                    handleUpdateGoal(goal.id, {
+                                      ownerId: event.target.value || null
+                                    })
+                                  }
+                                  className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-bold text-white"
+                                >
+                                  <option value="">No owner</option>
+                                  {activeTeam.members?.map(member => (
+                                    <option key={member.user.id} value={member.user.id}>
+                                      {member.user.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
 
-                          <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-full rounded-full bg-slate-950 transition-all"
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                        </div>
+                            <div className="mt-5">
+                              <div className="mb-2 flex items-center justify-between text-xs font-black text-slate-400">
+                                <span>Milestone progress</span>
+                                <span>{progress}%</span>
+                              </div>
 
-                        <div className="mt-5 grid gap-5 lg:grid-cols-2">
-                          <div>
-                            <h4 className="font-black text-slate-950">
-                              Milestones
-                            </h4>
+                              <div className="h-3 overflow-hidden rounded-full bg-slate-800">
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${progress}%` }}
+                                  transition={{ duration: 0.45, ease: "easeOut" }}
+                                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-400"
+                                />
+                              </div>
+                            </div>
 
-                            <div className="mt-3 space-y-3">
+                            <div className="mt-5 space-y-3">
+                              <h4 className="font-black text-white">Milestones</h4>
+
                               {goal.milestones?.length === 0 ? (
                                 <EmptyState text="No milestones yet." />
                               ) : (
                                 goal.milestones?.map(milestone => (
-                                  <div
+                                  <motion.div
                                     key={milestone.id}
-                                    className="rounded-2xl border border-slate-200 p-3"
+                                    layout
+                                    whileHover={{ y: -2 }}
+                                    className="rounded-2xl border border-slate-700 bg-slate-900/70 p-3"
                                   >
                                     <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <p className="font-bold text-slate-950">
+                                      <div className="min-w-0">
+                                        <p className="break-words font-bold text-white">
                                           {milestone.title}
                                         </p>
 
-                                        <p className="text-sm text-slate-600">
-                                          {milestone.description ||
-                                            "No description"}
+                                        <p className="break-words text-sm text-slate-400">
+                                          {milestone.description || "No description"}
                                         </p>
                                       </div>
 
-                                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">
+                                      <span className="shrink-0 rounded-full border border-blue-400/30 bg-blue-500/10 px-2 py-1 text-xs font-black text-blue-300">
                                         {milestone.progress}%
                                       </span>
                                     </div>
@@ -1443,112 +1506,98 @@ export default function TeamPage({ params }) {
                                       max="100"
                                       value={milestone.progress}
                                       onChange={event =>
-                                        handleUpdateMilestone(
-                                          goal.id,
-                                          milestone.id,
-                                          {
-                                            progress: Number(event.target.value)
-                                          }
-                                        )
+                                        handleUpdateMilestone(goal.id, milestone.id, {
+                                          progress: Number(event.target.value)
+                                        })
                                       }
                                       className="mt-3 w-full"
                                     />
-                                  </div>
+                                  </motion.div>
                                 ))
                               )}
-                            </div>
 
-                            <form
-                              onSubmit={event =>
-                                handleCreateMilestone(event, goal.id)
-                              }
-                              className="mt-4 rounded-2xl border border-dashed border-slate-300 p-4"
-                            >
-                              <h5 className="text-sm font-black text-slate-950">
-                                Add milestone
-                              </h5>
-
-                              <div className="mt-3 space-y-3">
-                                <Input
-                                  name="title"
-                                  placeholder="Milestone title"
-                                  value={milestoneForm.title}
-                                  onChange={event =>
-                                    handleMilestoneChange(goal.id, event)
-                                  }
-                                  required
-                                />
-
-                                <Textarea
-                                  name="description"
-                                  placeholder="Milestone description"
-                                  value={milestoneForm.description}
-                                  onChange={event =>
-                                    handleMilestoneChange(goal.id, event)
-                                  }
-                                  rows={2}
-                                />
-
-                                <Input
-                                  name="progress"
-                                  type="number"
-                                  min="0"
-                                  max="100"
-                                  placeholder="Progress %"
-                                  value={milestoneForm.progress}
-                                  onChange={event =>
-                                    handleMilestoneChange(goal.id, event)
-                                  }
-                                />
-
-                                <Input
-                                  name="dueDate"
-                                  type="date"
-                                  value={milestoneForm.dueDate}
-                                  onChange={event =>
-                                    handleMilestoneChange(goal.id, event)
-                                  }
-                                />
-                              </div>
-
-                              <Button
-                                type="submit"
-                                disabled={submitting === `milestone-${goal.id}`}
-                                className="mt-3 w-full"
+                              <form
+                                onSubmit={event => handleCreateMilestone(event, goal.id)}
+                                className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/40 p-4"
                               >
-                                {submitting === `milestone-${goal.id}`
-                                  ? "Adding..."
-                                  : "Add Milestone"}
-                              </Button>
-                            </form>
+                                <h5 className="text-sm font-black text-white">
+                                  Add milestone
+                                </h5>
+
+                                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                  <Input
+                                    name="title"
+                                    placeholder="Milestone title"
+                                    value={milestoneForm.title}
+                                    onChange={event =>
+                                      handleMilestoneChange(goal.id, event)
+                                    }
+                                    required
+                                  />
+
+                                  <Input
+                                    name="progress"
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    placeholder="Progress %"
+                                    value={milestoneForm.progress}
+                                    onChange={event =>
+                                      handleMilestoneChange(goal.id, event)
+                                    }
+                                  />
+
+                                  <Textarea
+                                    name="description"
+                                    placeholder="Milestone description"
+                                    value={milestoneForm.description}
+                                    onChange={event =>
+                                      handleMilestoneChange(goal.id, event)
+                                    }
+                                    rows={2}
+                                  />
+
+                                  <Input
+                                    name="dueDate"
+                                    type="date"
+                                    value={milestoneForm.dueDate}
+                                    onChange={event =>
+                                      handleMilestoneChange(goal.id, event)
+                                    }
+                                  />
+                                </div>
+
+                                <Button
+                                  type="submit"
+                                  disabled={submitting === `milestone-${goal.id}`}
+                                  className="mt-3 w-full"
+                                >
+                                  {submitting === `milestone-${goal.id}`
+                                    ? "Adding..."
+                                    : "Add Milestone"}
+                                </Button>
+                              </form>
+                            </div>
                           </div>
 
                           <div>
-                            <h4 className="font-black text-slate-950">
-                              Activity Feed
-                            </h4>
+                            <h4 className="font-black text-white">Activity Feed</h4>
 
                             <form
-                              onSubmit={event =>
-                                handleCreateGoalUpdate(event, goal.id)
-                              }
+                              onSubmit={event => handleCreateGoalUpdate(event, goal.id)}
                               className="mt-3"
                             >
                               <Textarea
                                 placeholder="Post a progress update..."
                                 value={goalUpdateForms[goal.id] || ""}
-                                onChange={event =>
-                                  handleGoalUpdateChange(goal.id, event)
-                                }
+                                onChange={event => handleGoalUpdateChange(goal.id, event)}
                                 rows={3}
                                 required
                               />
 
                               <Button
                                 type="submit"
-                                disabled={
-                                  submitting === `goal-update-${goal.id}`
-                                }
+                                disabled={submitting === `goal-update-${goal.id}`}
                                 className="mt-3 w-full"
                               >
                                 {submitting === `goal-update-${goal.id}`
@@ -1562,247 +1611,107 @@ export default function TeamPage({ params }) {
                                 <EmptyState text="No progress updates yet." />
                               ) : (
                                 goal.updates?.map(update => (
-                                  <div
+                                  <motion.div
                                     key={update.id}
-                                    className="rounded-2xl border border-slate-200 p-3"
+                                    layout
+                                    className="rounded-2xl border border-slate-700 bg-slate-900/70 p-3"
                                   >
-                                    <p className="text-sm text-slate-700">
+                                    <p className="break-words text-sm text-slate-300">
                                       {update.content}
                                     </p>
 
                                     <p className="mt-2 text-xs text-slate-500">
-                                      {update.author?.name} ·{" "}
-                                      {new Date(
-                                        update.createdAt
-                                      ).toLocaleString()}
+                                      {update.author?.name || "Unknown"} ·{" "}
+                                      {new Date(update.createdAt).toLocaleString()}
                                     </p>
-                                  </div>
+                                  </motion.div>
                                 ))
                               )}
                             </div>
                           </div>
                         </div>
-                      </article>
+                      </motion.article>
                     );
                   })
                 )}
               </div>
             </Card>
 
-            <section className="grid gap-6 xl:grid-cols-2">
-              <Card title="Announcements">
-                <div className="space-y-4">
-                  {activeTeam.announcements?.length === 0 ? (
-                    <EmptyState text="No announcements yet." />
-                  ) : (
-                    activeTeam.announcements?.map(announcement => (
-                      <div
-                        key={announcement.id}
-                        className={`rounded-3xl border p-4 ${
-                          announcement.isPinned
-                            ? "border-amber-300 bg-amber-50"
-                            : "border-slate-200 bg-white"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="font-black text-slate-950">
-                                {announcement.title}
-                              </p>
-
-                              {announcement.isPinned && (
-                                <span className="rounded-full bg-amber-200 px-2 py-1 text-xs font-black text-amber-900">
-                                  Pinned
-                                </span>
-                              )}
-                            </div>
-
-                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
-                              {announcement.content}
-                            </p>
-
-                            <p className="mt-2 text-xs text-slate-500">
-                              Posted by {announcement.author?.name}
-                            </p>
-                          </div>
-
-                          {canManageWorkspace && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleToggleAnnouncementPin(announcement)
-                              }
-                              className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100"
-                            >
-                              {announcement.isPinned ? "Unpin" : "Pin"}
-                            </button>
-                          )}
-                        </div>
-
-                        {announcement.attachmentUrl && (
-                          <a
-                            href={announcement.attachmentUrl}
-                            target="_blank"
-                            className="mt-3 inline-block text-sm font-black text-slate-950 underline"
-                          >
-                            View attachment
-                          </a>
-                        )}
-
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {ANNOUNCEMENT_EMOJIS.map(emoji => (
-                            <button
-                              key={emoji}
-                              type="button"
-                              onClick={() =>
-                                handleAnnouncementReaction(
-                                  announcement.id,
-                                  emoji
-                                )
-                              }
-                              className={`rounded-full border px-3 py-1 text-sm font-bold transition ${
-                                hasUserReacted(announcement, emoji)
-                                  ? "border-slate-950 bg-slate-950 text-white"
-                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-950"
-                              }`}
-                            >
-                              {emoji}{" "}
-                              {getReactionCount(announcement, emoji)}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="mt-5 border-t border-slate-200 pt-4">
-                          <h4 className="text-sm font-black text-slate-950">
-                            Comments
-                          </h4>
-
-                          <div className="mt-3 space-y-3">
-                            {announcement.comments?.length === 0 ? (
-                              <EmptyState text="No comments yet." />
-                            ) : (
-                              announcement.comments?.map(comment => (
-                                <div
-                                  key={comment.id}
-                                  className="rounded-2xl bg-slate-50 p-3"
-                                >
-                                  <p className="text-sm text-slate-700">
-                                    {comment.content}
-                                  </p>
-
-                                  <p className="mt-2 text-xs text-slate-500">
-                                    {comment.author?.name} ·{" "}
-                                    {new Date(
-                                      comment.createdAt
-                                    ).toLocaleString()}
-                                  </p>
-                                </div>
-                              ))
-                            )}
-                          </div>
-
-                          <form
-                            onSubmit={event =>
-                              handleCreateAnnouncementComment(
-                                event,
-                                announcement.id
-                              )
-                            }
-                            className="mt-3 flex gap-2"
-                          >
-                            <Input
-                              placeholder="Comment... mention @email@example.com"
-                              value={commentForms[announcement.id] || ""}
-                              onChange={event =>
-                                handleCommentChange(announcement.id, event)
-                              }
-                              required
-                            />
-
-                            <Button
-                              type="submit"
-                              disabled={
-                                submitting === `comment-${announcement.id}`
-                              }
-                            >
-                              {submitting === `comment-${announcement.id}`
-                                ? "Posting..."
-                                : "Comment"}
-                            </Button>
-                          </form>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </Card>
-
-              <Card title="Action Items">
-                <div className="mb-5 flex rounded-xl border border-slate-200 bg-slate-50 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setActionView("kanban")}
-                    className={`rounded-lg px-3 py-2 text-sm font-black ${
-                      actionView === "kanban"
-                        ? "bg-slate-950 text-white"
-                        : "text-slate-600"
+            <Card title="Action Items">
+              <div className="mb-5 flex w-full max-w-sm rounded-xl border border-slate-700 bg-slate-950/60 p-1">
+                <button
+                  type="button"
+                  onClick={() => setActionView("kanban")}
+                  className={`flex-1 rounded-lg px-3 py-2 text-sm font-black transition ${actionView === "kanban"
+                    ? "bg-white text-slate-950"
+                    : "text-slate-400 hover:text-white"
                     }`}
-                  >
-                    Kanban
-                  </button>
+                >
+                  Kanban
+                </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setActionView("list")}
-                    className={`rounded-lg px-3 py-2 text-sm font-black ${
-                      actionView === "list"
-                        ? "bg-slate-950 text-white"
-                        : "text-slate-600"
+                <button
+                  type="button"
+                  onClick={() => setActionView("list")}
+                  className={`flex-1 rounded-lg px-3 py-2 text-sm font-black transition ${actionView === "list"
+                    ? "bg-white text-slate-950"
+                    : "text-slate-400 hover:text-white"
                     }`}
-                  >
-                    List
-                  </button>
-                </div>
+                >
+                  List
+                </button>
+              </div>
 
-                {activeTeam.actionItems?.length === 0 ? (
-                  <EmptyState text="No action items yet." />
-                ) : actionView === "kanban" ? (
-                  <div className="grid gap-4 lg:grid-cols-3">
-                    {ACTION_STATUSES.map(status => (
-                      <div
+              {activeTeam.actionItems?.length === 0 ? (
+                <EmptyState text="No action items yet." />
+              ) : actionView === "kanban" ? (
+                <div className="grid gap-5 xl:grid-cols-3">
+                  {ACTION_STATUSES.map(status => {
+                    const items = getActionItemsByStatus(status);
+
+                    return (
+                      <motion.div
                         key={status}
-                        className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                        layout
+                        className="rounded-[1.5rem] border border-slate-700 bg-slate-950/50 p-4"
                       >
                         <div className="mb-4 flex items-center justify-between">
-                          <h3 className="text-sm font-black text-slate-800">
-                            {status}
+                          <h3 className="text-sm font-black tracking-wide text-white">
+                            {status.replace("_", " ")}
                           </h3>
 
-                          <span className="rounded-full bg-white px-2 py-1 text-xs font-black text-slate-500">
-                            {getActionItemsByStatus(status).length}
+                          <span className="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-xs font-black text-slate-300">
+                            {items.length}
                           </span>
                         </div>
 
                         <div className="space-y-3">
-                          {getActionItemsByStatus(status).length === 0 ? (
-                            <EmptyState text="No items." />
+                          {items.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/50 p-6 text-center">
+                              <p className="text-sm font-semibold text-slate-500">
+                                No items
+                              </p>
+                            </div>
                           ) : (
-                            getActionItemsByStatus(status).map(item => (
-                              <ActionItemCard
-                                key={item.id}
-                                item={item}
-                                onStatusChange={handleUpdateActionStatus}
-                                getPriorityBadgeClass={getPriorityBadgeClass}
-                              />
-                            ))
+                            <AnimatePresence mode="popLayout">
+                              {items.map(item => (
+                                <ActionItemCard
+                                  key={item.id}
+                                  item={item}
+                                  onStatusChange={handleUpdateActionStatus}
+                                  getPriorityBadgeClass={getPriorityBadgeClass}
+                                />
+                              ))}
+                            </AnimatePresence>
                           )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <AnimatePresence mode="popLayout">
                     {activeTeam.actionItems?.map(item => (
                       <ActionItemCard
                         key={item.id}
@@ -1811,15 +1720,148 @@ export default function TeamPage({ params }) {
                         getPriorityBadgeClass={getPriorityBadgeClass}
                       />
                     ))}
-                  </div>
+                  </AnimatePresence>
+                </div>
+              )}
+            </Card>
+
+            <Card title="Announcements">
+              <div className="grid gap-4 xl:grid-cols-2">
+                {activeTeam.announcements?.length === 0 ? (
+                  <EmptyState text="No announcements yet." />
+                ) : (
+                  activeTeam.announcements?.map(announcement => (
+                    <motion.div
+                      key={announcement.id}
+                      layout
+                      whileHover={{ y: -2 }}
+                      className={`rounded-[1.5rem] border p-4 ${announcement.isPinned
+                        ? "border-amber-400/40 bg-amber-500/10"
+                        : "border-slate-700 bg-slate-950/50"
+                        }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="break-words font-black text-white">
+                              {announcement.title}
+                            </p>
+
+                            {announcement.isPinned && (
+                              <span className="rounded-full border border-amber-400/40 bg-amber-500/20 px-2 py-1 text-xs font-black text-amber-200">
+                                Pinned
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-300">
+                            {announcement.content}
+                          </p>
+
+                          <p className="mt-2 text-xs text-slate-500">
+                            Posted by {announcement.author?.name || "Unknown"}
+                          </p>
+                        </div>
+
+                        {canManageWorkspace && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAnnouncementPin(announcement)}
+                            className="shrink-0 rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-slate-300 transition hover:bg-slate-800"
+                          >
+                            {announcement.isPinned ? "Unpin" : "Pin"}
+                          </button>
+                        )}
+                      </div>
+
+                      {announcement.attachmentUrl && (
+                        <a
+                          href={announcement.attachmentUrl}
+                          target="_blank"
+                          className="mt-3 inline-block text-sm font-black text-blue-300 underline"
+                        >
+                          View attachment
+                        </a>
+                      )}
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {ANNOUNCEMENT_EMOJIS.map(emoji => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() =>
+                              handleAnnouncementReaction(announcement.id, emoji)
+                            }
+                            className={`rounded-full border px-3 py-1 text-sm font-bold transition ${hasUserReacted(announcement, emoji)
+                              ? "border-blue-400 bg-blue-500/20 text-blue-200"
+                              : "border-slate-700 bg-slate-900 text-slate-300 hover:border-blue-400"
+                              }`}
+                          >
+                            {emoji} {getReactionCount(announcement, emoji)}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="mt-5 border-t border-slate-700 pt-4">
+                        <h4 className="text-sm font-black text-white">Comments</h4>
+
+                        <div className="mt-3 space-y-3">
+                          {announcement.comments?.length === 0 ? (
+                            <EmptyState text="No comments yet." />
+                          ) : (
+                            announcement.comments?.map(comment => (
+                              <div
+                                key={comment.id}
+                                className="rounded-2xl border border-slate-700 bg-slate-900/70 p-3"
+                              >
+                                <p className="break-words text-sm text-slate-300">
+                                  {comment.content}
+                                </p>
+
+                                <p className="mt-2 text-xs text-slate-500">
+                                  {comment.author?.name || "Unknown"} ·{" "}
+                                  {new Date(comment.createdAt).toLocaleString()}
+                                </p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        <form
+                          onSubmit={event =>
+                            handleCreateAnnouncementComment(event, announcement.id)
+                          }
+                          className="mt-3 flex flex-col gap-2 sm:flex-row"
+                        >
+                          <Input
+                            placeholder="Comment... mention @email@example.com"
+                            value={commentForms[announcement.id] || ""}
+                            onChange={event =>
+                              handleCommentChange(announcement.id, event)
+                            }
+                            required
+                          />
+
+                          <Button
+                            type="submit"
+                            disabled={submitting === `comment-${announcement.id}`}
+                          >
+                            {submitting === `comment-${announcement.id}`
+                              ? "Posting..."
+                              : "Comment"}
+                          </Button>
+                        </form>
+                      </div>
+                    </motion.div>
+                  ))
                 )}
-              </Card>
-            </section>
+              </div>
+            </Card>
 
             {canManageWorkspace && (
               <Card title="Audit Log">
                 <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-slate-600">
+                  <p className="text-sm text-slate-400">
                     Immutable timeline of workspace changes.
                   </p>
 
@@ -1833,7 +1875,7 @@ export default function TeamPage({ params }) {
                     name="action"
                     value={auditFilter.action}
                     onChange={handleAuditFilterChange}
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"
+                    className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white"
                   >
                     <option value="">All actions</option>
                     <option value="CREATE">CREATE</option>
@@ -1848,7 +1890,7 @@ export default function TeamPage({ params }) {
                     name="entity"
                     value={auditFilter.entity}
                     onChange={handleAuditFilterChange}
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"
+                    className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white"
                   >
                     <option value="">All entities</option>
                     <option value="Workspace">Workspace</option>
@@ -1859,33 +1901,33 @@ export default function TeamPage({ params }) {
                   </select>
                 </div>
 
-                <div className="mt-5 space-y-3">
+                <div className="mt-5 grid gap-3 lg:grid-cols-2">
                   {auditLogs.length === 0 ? (
                     <EmptyState text="No audit logs yet." />
                   ) : (
                     auditLogs.map(log => (
-                      <div
+                      <motion.div
                         key={log.id}
-                        className="rounded-2xl border border-slate-200 bg-white p-4"
+                        layout
+                        className="rounded-2xl border border-slate-700 bg-slate-950/50 p-4"
                       >
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">
+                          <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-950">
                             {log.action}
                           </span>
 
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">
+                          <span className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-black text-slate-300">
                             {log.entity}
                           </span>
                         </div>
 
-                        <p className="mt-3 text-sm text-slate-700">
+                        <p className="mt-3 text-sm text-slate-300">
                           {log.actor?.name || "Unknown user"} performed{" "}
-                          <strong>{log.action}</strong> on{" "}
-                          <strong>{log.entity}</strong>.
+                          <strong>{log.action}</strong> on <strong>{log.entity}</strong>.
                         </p>
 
                         {log.metadata && (
-                          <pre className="mt-3 overflow-x-auto rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                          <pre className="mt-3 max-h-40 overflow-auto rounded-xl border border-slate-800 bg-black/30 p-3 text-xs text-slate-400">
                             {JSON.stringify(log.metadata, null, 2)}
                           </pre>
                         )}
@@ -1893,52 +1935,73 @@ export default function TeamPage({ params }) {
                         <p className="mt-2 text-xs text-slate-500">
                           {new Date(log.createdAt).toLocaleString()}
                         </p>
-                      </div>
+                      </motion.div>
                     ))
                   )}
                 </div>
               </Card>
             )}
-          </div>
-        </section>
+          </motion.div>
+        </motion.section>
       </div>
     </main>
   );
 }
 
-function Card({ title, children }) {
+function Card({ title, children, className = "" }) {
   return (
-    <section className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-xl shadow-slate-200/70 backdrop-blur">
-      <h2 className="mb-4 text-xl font-black text-slate-950">{title}</h2>
+    <motion.section
+      variants={fadeUp}
+      whileHover={{ y: -2 }}
+      className={`rounded-[2rem] border border-slate-700/60 bg-slate-900/80 p-6 shadow-2xl shadow-black/30 backdrop-blur-xl transition ${className}`}
+    >
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h2 className="text-xl font-black tracking-tight text-white">{title}</h2>
+        <div className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_24px_rgba(96,165,250,0.9)]" />
+      </div>
+
       {children}
-    </section>
+    </motion.section>
   );
 }
 
 function MetricCard({ label, value, danger = false }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-sm font-bold text-slate-500">{label}</p>
+    <motion.div
+      variants={fadeUp}
+      whileHover={{ y: -3, scale: 1.01 }}
+      className="rounded-2xl border border-slate-700/60 bg-slate-950/60 p-4 shadow-lg shadow-black/20"
+    >
+      <p className="text-sm font-bold text-slate-400">{label}</p>
       <p
-        className={`mt-2 text-3xl font-black ${
-          danger ? "text-red-600" : "text-slate-950"
-        }`}
+        className={`mt-2 text-3xl font-black ${danger ? "text-red-400" : "text-white"
+          }`}
       >
         {value}
       </p>
-    </div>
+    </motion.div>
   );
 }
 
 function Badge({ children }) {
   return (
-    <span className="rounded-full bg-slate-100 px-3 py-1">{children}</span>
+    <span className="rounded-full border border-slate-700 bg-slate-800/80 px-3 py-1 text-slate-200">
+      {children}
+    </span>
+  );
+}
+
+function PremiumBadge({ children }) {
+  return (
+    <span className="rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1 text-xs font-black text-slate-300">
+      {children}
+    </span>
   );
 }
 
 function EmptyState({ text }) {
   return (
-    <p className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm text-slate-500">
+    <p className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/50 p-4 text-center text-sm text-slate-400">
       {text}
     </p>
   );
@@ -1946,12 +2009,27 @@ function EmptyState({ text }) {
 
 function ActionItemCard({ item, onStatusChange, getPriorityBadgeClass }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <motion.article
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      whileHover={{ y: -3 }}
+      className="rounded-2xl border border-slate-700 bg-slate-900/80 p-4 shadow-lg shadow-black/20 transition hover:border-blue-400/50"
+    >
       <div className="flex items-start justify-between gap-3">
-        <p className="font-black text-slate-950">{item.title}</p>
+        <div className="min-w-0">
+          <h4 className="break-words text-sm font-black leading-5 text-white">
+            {item.title}
+          </h4>
+
+          <p className="mt-2 line-clamp-3 break-words text-sm leading-5 text-slate-400">
+            {item.description || "No description"}
+          </p>
+        </div>
 
         <span
-          className={`rounded-full px-2 py-1 text-xs font-black ${getPriorityBadgeClass(
+          className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-black ${getPriorityBadgeClass(
             item.priority
           )}`}
         >
@@ -1959,31 +2037,34 @@ function ActionItemCard({ item, onStatusChange, getPriorityBadgeClass }) {
         </span>
       </div>
 
-      <p className="mt-1 text-sm text-slate-600">
-        {item.description || "No description"}
-      </p>
+      <div className="mt-4 space-y-1.5 text-xs text-slate-500">
+        {item.goal && (
+          <p className="break-words">
+            <span className="font-bold text-slate-400">Goal:</span>{" "}
+            {item.goal.title}
+          </p>
+        )}
 
-      {item.goal && (
-        <p className="mt-2 text-xs text-slate-500">Goal: {item.goal.title}</p>
-      )}
+        {item.assignee && (
+          <p>
+            <span className="font-bold text-slate-400">Assignee:</span>{" "}
+            {item.assignee.name}
+          </p>
+        )}
 
-      {item.assignee && (
-        <p className="mt-1 text-xs text-slate-500">
-          Assigned to {item.assignee.name}
-        </p>
-      )}
-
-      {item.dueDate && (
-        <p className="mt-1 text-xs text-slate-500">
-          Due {new Date(item.dueDate).toLocaleDateString()}
-        </p>
-      )}
+        {item.dueDate && (
+          <p>
+            <span className="font-bold text-slate-400">Due:</span>{" "}
+            {new Date(item.dueDate).toLocaleDateString()}
+          </p>
+        )}
+      </div>
 
       {item.attachmentUrl && (
         <a
           href={item.attachmentUrl}
           target="_blank"
-          className="mt-2 inline-block text-sm font-black text-slate-950 underline"
+          className="mt-3 inline-block text-xs font-black text-blue-300 underline"
         >
           View attachment
         </a>
@@ -1992,7 +2073,7 @@ function ActionItemCard({ item, onStatusChange, getPriorityBadgeClass }) {
       <select
         value={item.status}
         onChange={event => onStatusChange(item.id, event.target.value)}
-        className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-900"
+        className="mt-4 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-black text-white"
       >
         {ACTION_STATUSES.map(statusOption => (
           <option key={statusOption} value={statusOption}>
@@ -2000,6 +2081,6 @@ function ActionItemCard({ item, onStatusChange, getPriorityBadgeClass }) {
           </option>
         ))}
       </select>
-    </div>
+    </motion.article>
   );
 }

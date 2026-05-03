@@ -78,3 +78,256 @@ html.dark .shadow-md,
 html.dark .shadow-sm {
   box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35) !important;
 }
+
+/* =========================================================
+   DARK MODE FIX FOR LOGIN / REGISTER / AUTH PAGES
+   Makes the full auth page dark, not only the form card
+   ========================================================= */
+
+html.dark,
+html.dark body {
+  background: #020617 !important;
+  color: #e5e7eb !important;
+}
+
+html.dark body > div,
+html.dark main,
+html.dark .min-h-screen {
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.22), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(124, 58, 237, 0.18), transparent 32%),
+    linear-gradient(135deg, #020617, #0f172a 45%, #111827) !important;
+  color: #e5e7eb !important;
+}
+
+/* Auth cards */
+html.dark form,
+html.dark .rounded-3xl,
+html.dark .rounded-\[2rem\] {
+  border-color: rgba(148, 163, 184, 0.25) !important;
+}
+
+/* Inputs */
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: rgba(15, 23, 42, 0.95) !important;
+  color: #f8fafc !important;
+  border-color: rgba(148, 163, 184, 0.35) !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Auth text */
+html.dark .text-slate-950,
+html.dark .text-slate-900,
+html.dark .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+html.dark .text-slate-700,
+html.dark .text-slate-600,
+html.dark .text-slate-500,
+html.dark .text-slate-400 {
+  color: #cbd5e1 !important;
+}
+
+/* Auth card backgrounds */
+html.dark .bg-white,
+html.dark .bg-white\/80,
+html.dark .bg-white\/85,
+html.dark .bg-slate-50,
+html.dark .bg-slate-100 {
+  background-color: rgba(15, 23, 42, 0.9) !important;
+}
+
+/* Buttons */
+html.dark button,
+html.dark .bg-slate-950 {
+  border-color: rgba(148, 163, 184, 0.25) !important;
+}
+
+/* Shadows */
+html.dark .shadow,
+html.dark .shadow-sm,
+html.dark .shadow-md,
+html.dark .shadow-lg,
+html.dark .shadow-xl,
+html.dark .shadow-2xl {
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* =========================================================
+   WORKSPACE PAGE THEME FIX
+   Light mode = full light UI
+   Dark mode = premium dark UI
+   ========================================================= */
+
+/* ---------- LIGHT MODE WORKSPACE ---------- */
+
+html:not(.dark) .workspace-page {
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 34%),
+    radial-gradient(circle at top right, rgba(124, 58, 237, 0.08), transparent 30%),
+    linear-gradient(135deg, #f8fafc, #eef2ff 46%, #ffffff) !important;
+  color: #0f172a !important;
+}
+
+/* Main dark panels become light */
+html:not(.dark) .workspace-page header,
+html:not(.dark) .workspace-page section,
+html:not(.dark) .workspace-page article,
+html:not(.dark) .workspace-page .bg-slate-900\/80,
+html:not(.dark) .workspace-page .bg-slate-900\/70,
+html:not(.dark) .workspace-page .bg-slate-900,
+html:not(.dark) .workspace-page .bg-slate-950\/95,
+html:not(.dark) .workspace-page .bg-slate-950\/70,
+html:not(.dark) .workspace-page .bg-slate-950\/60,
+html:not(.dark) .workspace-page .bg-slate-950\/50,
+html:not(.dark) .workspace-page .bg-slate-950\/40,
+html:not(.dark) .workspace-page .bg-black\/30 {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(203, 213, 225, 0.95) !important;
+  color: #0f172a !important;
+  box-shadow: 0 22px 55px rgba(15, 23, 42, 0.10) !important;
+}
+
+/* Nested panels */
+html:not(.dark) .workspace-page .bg-slate-800,
+html:not(.dark) .workspace-page .bg-slate-800\/80,
+html:not(.dark) .workspace-page .bg-slate-800\/70 {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Text */
+html:not(.dark) .workspace-page .text-white,
+html:not(.dark) .workspace-page .text-slate-100,
+html:not(.dark) .workspace-page .text-slate-200 {
+  color: #020617 !important;
+}
+
+html:not(.dark) .workspace-page .text-slate-300,
+html:not(.dark) .workspace-page .text-slate-400,
+html:not(.dark) .workspace-page .text-slate-500 {
+  color: #475569 !important;
+}
+
+html:not(.dark) .workspace-page .text-blue-300,
+html:not(.dark) .workspace-page .text-blue-300\/80 {
+  color: #2563eb !important;
+}
+
+/* Borders */
+html:not(.dark) .workspace-page .border-slate-700,
+html:not(.dark) .workspace-page .border-slate-700\/60,
+html:not(.dark) .workspace-page .border-slate-800,
+html:not(.dark) .workspace-page .border-blue-400\/20,
+html:not(.dark) .workspace-page .border-blue-400\/30,
+html:not(.dark) .workspace-page .border-emerald-400\/30,
+html:not(.dark) .workspace-page .border-red-500\/30,
+html:not(.dark) .workspace-page .border-amber-400\/40 {
+  border-color: #cbd5e1 !important;
+}
+
+/* Inputs */
+html:not(.dark) .workspace-page input,
+html:not(.dark) .workspace-page textarea,
+html:not(.dark) .workspace-page select {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html:not(.dark) .workspace-page input::placeholder,
+html:not(.dark) .workspace-page textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Primary buttons stay dark */
+html:not(.dark) .workspace-page button.bg-slate-950,
+html:not(.dark) .workspace-page .bg-slate-950.text-white {
+  background-color: #020617 !important;
+  color: #ffffff !important;
+  border-color: #020617 !important;
+}
+
+/* Selected toggle button */
+html:not(.dark) .workspace-page button.bg-white {
+  background-color: #020617 !important;
+  color: #ffffff !important;
+}
+
+/* Badges */
+html:not(.dark) .workspace-page .rounded-full.bg-slate-950\/60,
+html:not(.dark) .workspace-page .rounded-full.bg-slate-800\/80,
+html:not(.dark) .workspace-page .rounded-full.bg-slate-900 {
+  background-color: #f1f5f9 !important;
+  color: #334155 !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Special status badges */
+html:not(.dark) .workspace-page .bg-emerald-500\/10 {
+  background-color: #ecfdf5 !important;
+  color: #047857 !important;
+  border-color: #a7f3d0 !important;
+}
+
+html:not(.dark) .workspace-page .bg-blue-500\/10,
+html:not(.dark) .workspace-page .bg-blue-500\/15,
+html:not(.dark) .workspace-page .bg-blue-500\/20 {
+  background-color: #eff6ff !important;
+  color: #1d4ed8 !important;
+  border-color: #bfdbfe !important;
+}
+
+html:not(.dark) .workspace-page .bg-red-500\/10,
+html:not(.dark) .workspace-page .bg-red-500\/15 {
+  background-color: #fef2f2 !important;
+  color: #b91c1c !important;
+  border-color: #fecaca !important;
+}
+
+html:not(.dark) .workspace-page .bg-orange-500\/15 {
+  background-color: #fff7ed !important;
+  color: #c2410c !important;
+  border-color: #fed7aa !important;
+}
+
+html:not(.dark) .workspace-page .bg-amber-500\/10,
+html:not(.dark) .workspace-page .bg-amber-500\/20 {
+  background-color: #fffbeb !important;
+  color: #92400e !important;
+  border-color: #fde68a !important;
+}
+
+/* Progress background */
+html:not(.dark) .workspace-page .h-3.bg-slate-800 {
+  background-color: #e2e8f0 !important;
+}
+
+/* File input button */
+html:not(.dark) .workspace-page input[type="file"]::file-selector-button {
+  background-color: #020617 !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+
+/* Notification dropdown */
+html:not(.dark) .workspace-page .absolute {
+  color: #0f172a !important;
+}
+
+/* ---------- DARK MODE WORKSPACE ---------- */
+
+html.dark .workspace-page {
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.18), transparent 32%),
+    radial-gradient(circle at top right, rgba(124, 58, 237, 0.16), transparent 30%),
+    linear-gradient(135deg, #020617, #0f172a 45%, #111827) !important;
+  color: #e5e7eb !important;
+}

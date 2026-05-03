@@ -97,23 +97,30 @@ export const useTeamStore = create(set => ({
     }));
   },
 
-  fetchTeamById: async teamId => {
+ fetchTeamById: async (teamId, options = {}) => {
+  const { silent = false } = options;
+
+  if (!silent) {
     set({ loading: true });
+  }
 
-    try {
-      const res = await api.get(`/api/teams/${teamId}`);
+  try {
+    const res = await api.get(`/api/teams/${teamId}`);
 
-      set({
-        activeTeam: res.data.team,
-        loading: false
-      });
+    set({
+      activeTeam: res.data.team,
+      loading: false
+    });
 
-      return res.data.team;
-    } catch (error) {
-      set({ loading: false });
-      throw error;
-    }
-  },
+    return res.data.team;
+  } catch (error) {
+    set({
+      loading: false
+    });
+
+    throw error;
+  }
+},
 
   clearActiveTeam: () => {
     set({ activeTeam: null });

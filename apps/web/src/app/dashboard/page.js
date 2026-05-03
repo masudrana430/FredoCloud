@@ -9,6 +9,9 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 
+import Lottie from "lottie-react";
+import loaderAnimation from "@/assets/loader.json";
+
 export default function DashboardPage() {
   const router = useRouter();
 
@@ -73,16 +76,24 @@ export default function DashboardPage() {
     router.push("/login");
   }
 
-  if (loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-900">
-        <p>Loading dashboard...</p>
-      </main>
-    );
-  }
+ if (loading) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-6 text-slate-900 dark:bg-slate-950 dark:text-white">
+      <div className="flex flex-col items-center rounded-3xl border border-slate-200 bg-white/90 p-8 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/80">
+        <div className="h-40 w-40">
+          <Lottie animationData={loaderAnimation} loop autoplay />
+        </div>
+
+        <p className="mt-4 text-sm font-bold text-slate-600 dark:text-slate-300">
+          Loading dashboard...
+        </p>
+      </div>
+    </main>
+  );
+}
 
   return (
-    <main className="min-h-screen bg-slate-100 px-6 py-8 text-slate-900">
+    <main className="min-h-screen px-6 py-8 text-slate-900">
       <div className="mx-auto max-w-6xl">
         <header className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
