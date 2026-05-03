@@ -136,3 +136,16 @@ CLOUDINARY_CLOUD_NAME=...
 CLOUDINARY_API_KEY=...
 CLOUDINARY_API_SECRET=...
 CLIENT_URL=https://your-web-service.up.railway.app
+
+## Bonus Features Implemented
+
+### OpenAPI / Swagger Docs
+
+The API documentation is served through Swagger UI.
+
+Local: http://localhost:5000/api/docs  
+Production: https://api-production-e292.up.railway.app/api/docs
+
+### Dark / Light Theme
+
+The frontend supports light mode, dark mode, and system preference detection. The selected mode is saved in localStorage.
