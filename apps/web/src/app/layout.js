@@ -5,15 +5,13 @@ import ThemeToggle from "@/components/theme/ThemeToggle";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  subsets: ["latin"]
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  subsets: ["latin"]
 });
-
-
 
 export const metadata = {
   metadataBase: new URL("https://web-production-ef8eb.up.railway.app"),
@@ -29,10 +27,12 @@ export const metadata = {
     "FredoCloud",
     "team workspace",
     "goals",
+    "milestones",
     "announcements",
     "action items",
     "Socket.io",
-    "Next.js"
+    "Next.js",
+    "Railway"
   ],
   authors: [
     {
@@ -44,7 +44,7 @@ export const metadata = {
   icons: {
     icon: "/fredocloud_logo.jpg",
     shortcut: "/fredocloud_logo.jpg",
-    apple: "/fredocloud_logo.jpg",
+    apple: "/fredocloud_logo.jpg"
   },
   openGraph: {
     title: "Collaborative Team Hub",
@@ -57,7 +57,7 @@ export const metadata = {
         url: "/fredocloud_logo.jpg",
         width: 1200,
         height: 630,
-        alt: "Collaborative Team Hub"
+        alt: "Collaborative Team Hub dashboard preview"
       }
     ],
     locale: "en_US",
@@ -72,11 +72,13 @@ export const metadata = {
   }
 };
 
-
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning className="min-h-full flex flex-col">
+      <body
+        suppressHydrationWarning
+        className={`${geistSans.variable} ${geistMono.variable} min-h-full flex flex-col`}
+      >
         <ThemeProvider>
           {children}
           <ThemeToggle />
